@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
-// 抑制 punycode 弃用警告
+// Suppress punycode deprecation warning
 process.removeAllListeners('warning');
 process.on('warning', (warning) => {
-  // 忽略 punycode 模块的弃用警告
+  // Ignore deprecation warnings for the punycode module
   if (warning.name === 'DeprecationWarning' && warning.message.includes('punycode')) {
     return;
   }
-  // 显示其他警告
+  // Show other warnings
   console.warn(warning.message);
 });
 
@@ -15,7 +15,7 @@ import { Command } from 'commander';
 import { GlobalMCPManager } from './mcp/manager';
 import { WelcomeScreen } from './ui/screens/welcome';
 
-// 导出MCP模块供外部使用
+// Export MCP module for external use
 export * from './mcp';
 
 const packageJson = require('../package.json');
@@ -33,18 +33,18 @@ program
       const { StorageService } = await import('./services/storage');
       StorageService.initializeConfig();
 
-      // 更新MCP配置（修复旧配置）
+      // Update MCP configuration (fix old configurations)
       StorageService.updateMcpConfig();
 
-      // 初始化系统MCP服务
+      // Initialize system MCP service
       const mcpManager = GlobalMCPManager.getInstance();
       await mcpManager.initialize();
 
-      // 启动主界面
+      // Start the main interface
       const welcome = new WelcomeScreen();
       await welcome.show();
     } catch (error) {
-      console.error('启动失败:', error);
+      console.error('Failed to start:', error);
       process.exit(1);
     }
   });

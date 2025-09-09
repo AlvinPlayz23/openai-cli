@@ -1,8 +1,8 @@
 # OpenAI CLI Agent
 
 <div align="center">
-  <h3>🤖 下一代智能编程助手</h3>
-  <p>基于 TypeScript 构建的强大 OpenAI CLI 编码代理</p>
+  <h3>🤖 The Next-Generation Intelligent Programming Assistant</h3>
+  <p>A powerful OpenAI CLI coding agent built with TypeScript</p>
   
   [![npm version](https://badge.fury.io/js/openai-cli-unofficial.svg)](https://badge.fury.io/js/openai-cli-unofficial)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -14,118 +14,126 @@
   <img src = "en.png" />
 </div>
 
-## ✨ 功能特性
+## ✨ Features
 
-- 🧠 **智能代码生成与优化** - AI 驱动的代码自动生成和优化建议
-- 🔧 **自动化代码重构** - 智能重构和代码结构优化
-- 📚 **智能文档生成** - 自动生成高质量的代码文档
-- 🐛 **错误诊断与修复** - 智能错误检测和修复建议
-- 📋 **编程最佳实践指导** - 遵循行业最佳实践的编程建议
-- 🌍 **多语言支持** - 支持中文和英文界面
+- 🧠 **Intelligent Code Generation & Optimization** - AI-driven automatic code generation and optimization suggestions.
+- 🔧 **Automated Code Refactoring** - Smart refactoring and code structure optimization.
+- 📚 **Intelligent Document Generation** - Automatically generate high-quality code documentation.
+- 🐛 **Error Diagnosis & Fixes** - Intelligent error detection and fix suggestions.
+- 📋 **Best Programming Practices Guidance** - Programming advice that follows industry best practices.
+- 🌍 **Multi-language Support** - Supports Chinese and English interfaces.
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 安装
+### Installation
 
 ```bash
-# 全局安装
+# Install globally
 npm install -g openai-cli-unofficial
 
-# 或使用 yarn
+# Or using yarn
 yarn global add openai-cli-unofficial
 ```
 
-### 使用
+### Usage
 
 ```bash
-# 启动交互式界面
+# Start the interactive interface
 openai-cli
 
-# 查看版本信息
+# Check version information
 openai-cli --version
 
-# 显示帮助信息
+# Display help information
 openai-cli --help
 ```
 
-## 💻 系统要求
+## 💻 System Requirements
 
 - Node.js >= 16.0.0
-- npm >= 7.0.0 或 yarn >= 1.22.0
+- npm >= 7.0.0 or yarn >= 1.22.0
 
-## 🛠️ 开发
+## 🛠️ Development
 
-### 克隆项目
+### Clone the project
 
 ```bash
 git clone https://github.com/MayDay-wpf/openai-cli.git
 cd openai-cli
 ```
 
-### 安装依赖
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-### 开发模式运行
+### Run in development mode
 
 ```bash
 npm run dev
 ```
 
-### 构建项目
+### Build the project
 
 ```bash
 npm run build
 ```
 
-## 📦 发布
+## 📦 Publishing
 
-### 构建并发布
+### Build and publish
 
 ```bash
-# 清理并构建
+# Clean and build
 npm run clean && npm run build
 
-# 发布到 npm
+# Publish to npm
 npm publish
 ```
 
-## 🤝 贡献
+## 🤝 Contributing
 
-欢迎贡献代码！请先阅读贡献指南。
+Contributions are welcome! Please read the contribution guidelines first.
 
-1. Fork 此项目
-2. 创建你的功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开一个 Pull Request
+1. Fork this project
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## 📄 许可证
+## 📄 License
 
-此项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🐛 问题反馈
+## 🐛 Bug Reports
 
-如果你发现了 bug 或有功能建议，请在 [Issues](https://github.com/MayDay-wpf/openai-cli/issues) 页面提交。
+If you find a bug or have a feature suggestion, please submit it on the [Issues](https://github.com/MayDay-wpf/openai-cli/issues) page.
 
-## 📞 联系方式
+## 📞 Contact
 
-- 项目主页: [https://github.com/MayDay-wpf/openai-cli](https://github.com/MayDay-wpf/openai-cli)
-- Bug 报告: [https://github.com/MayDay-wpf/openai-cli/issues](https://github.com/MayDay-wpf/openai-cli/issues)
+- Project Homepage: [https://github.com/MayDay-wpf/openai-cli](https://github.com/MayDay-wpf/openai-cli)
+- Bug Reports: [https://github.com/MayDay-wpf/openai-cli/issues](https://github.com/MayDay-wpf/openai-cli/issues)
 
 
-## 🔆功能
+## 🔆 Features (More)
 
-- 文件系统操作
+- File system operations
 - TODOS
-- 终端操作
-- 第三方MCP兼容
-- 自定义BaseURL、APIKEY
-- OpenAI Completions 请求兼容
-- 历史记录导出
-- 检查点回滚
+- Terminal operations
+- Third-party MCP compatibility
+- Custom BaseURL, APIKEY
+- OpenAI Completions request compatibility
+- History export
+- Checkpoint rollback
+
+## 🔮 Future Features
+
+- **Project-Wide Context:** Allow the agent to scan the entire project for a better understanding of the codebase and more accurate suggestions.
+- **Interactive Code Editing:** Instead of just suggesting code, allow the user to apply changes directly from the CLI.
+- **Test Generation:** Automatically generate unit tests for the code written or modified by the agent.
+- **Git Integration:** Allow the agent to create new branches, commit changes, and even create pull requests.
+- **Plugin System:** Allow users to extend the agent's functionality by creating their own plugins.
 ---
 
 <div align="center">
