@@ -17,7 +17,7 @@ export class WelcomeScreen {
   private readonly gradients = AnimationUtils.getGradients();
   
   /**
-   * 从 package.json 读取版本信息
+   * Reads the version from package.json
    */
   private getVersion(): string {
     try {
@@ -31,14 +31,14 @@ export class WelcomeScreen {
   async show(): Promise<void> {
     await this.showSplashScreen();
 
-    // 在显示主菜单前进行更新检查
+    // Check for updates before showing the main menu
     await this.checkForUpdates();
 
     await this.showMainMenu();
   }
 
   /**
-   * 检查更新并提示用户
+   * Checks for updates and prompts the user
    */
   private async checkForUpdates(): Promise<void> {
     try {
@@ -50,7 +50,7 @@ export class WelcomeScreen {
         if (shouldUpdate) {
           await updateChecker.performUpdate();
 
-          // 显示按键继续提示
+          // Show a message to press Enter to continue
           const messages = languageService.getMessages();
           await input({
             message: '  ' + chalk.gray(messages.welcome.actions.pressEnter)
@@ -58,36 +58,36 @@ export class WelcomeScreen {
         }
       }
     } catch (error) {
-      // 静默处理更新检查错误，不影响正常启动
+      // Silently handle update check errors without affecting startup
       console.debug('Update check failed:', error);
     }
   }
 
   private async showSplashScreen(): Promise<void> {
-    // 隐藏光标减少闪烁
+    // Hide cursor to reduce flickering
     process.stdout.write('\x1B[?25l');
     AnimationUtils.forceClearScreen();
 
-    // 显示加载动画
+    // Show loading animation
     await this.showLoadingAnimation();
 
-    // 显示大标题
+    // Show main title
     this.showGrandTitle();
 
-    // 显示副标题和描述
+    // Show subtitle and description
     this.showDescription();
 
-    // 显示装饰性分割线
+    // Show decorative divider
     this.showDivider();
 
-    // 恢复光标
+    // Restore cursor
     process.stdout.write('\x1B[?25h');
   }
 
   private async showLoadingAnimation(): Promise<void> {
     const messages = languageService.getMessages();
 
-    // 使用统一的动画工具
+    // Use unified animation utility
     const controller = AnimationUtils.showLoadingAnimation({
       text: messages.welcome.starting,
       interval: 80
@@ -97,7 +97,7 @@ export class WelcomeScreen {
   }
 
   private showGrandTitle(): void {
-    // 创建更大气的标题
+    // Create a more prominent title
     const title1 = figlet.textSync('OPENAI', {
       font: 'ANSI Shadow',
       horizontalLayout: 'default',
@@ -114,12 +114,12 @@ export class WelcomeScreen {
       whitespaceBreak: true
     });
 
-    // 使用多层渐变效果
+    // Use multi-layer gradient effect
     console.log(this.gradients.primary(title1));
     console.log(this.gradients.accent(title2));
     console.log();
 
-    // 添加版本信息和徽章
+    // Add version information and badges
     const versionBadge = `  [ v${this.getVersion()} ] `;
     const statusBadge = '  [ BETA ] ';
     const aiBadge = '  [ AI-POWERED ] ';
@@ -136,7 +136,7 @@ export class WelcomeScreen {
   private showDescription(): void {
     const messages = languageService.getMessages();
 
-    // 主标题和副标题
+    // Main title and subtitle
     console.log('  ' + this.gradients.primary(messages.welcome.tagline));
     console.log('  ' + this.gradients.accent('Github: https://github.com/MayDay-wpf/openai-cli'));
     console.log();
@@ -193,38 +193,38 @@ export class WelcomeScreen {
     switch (action) {
       case 'start':
         try {
-          // 检查配置是否完整
+          // Check if the configuration is complete
           const configValidation = StorageService.validateApiConfig();
 
           if (!configValidation.isValid) {
-            // 显示配置不完整的警告
+            // Show a warning for incomplete configuration
             const shouldGoToConfig = await this.showConfigWarning(configValidation.missing);
 
             if (shouldGoToConfig) {
-              // 用户选择配置，跳转到配置页面
+              // User chose to configure, navigate to the config page
               const configPage = new ConfigPage();
               await configPage.show();
-              // 配置完成后确保终端状态重置
+              // Ensure terminal state is reset after configuration
               await this.ensureTerminalReset();
-              // 重新显示欢迎页面
+              // Redisplay the welcome page
               await this.show();
             } else {
-              // 用户选择返回主菜单，清屏并重新显示整个欢迎页面
+              // User chose to return to the main menu, clear screen and redisplay the whole welcome page
               await this.show();
             }
             return;
           }
 
-          // 配置完整，启动主页面
+          // Configuration is complete, start the main page
           const mainPage = new MainPage();
           await mainPage.show();
-          // 确保MainPage实例被正确清理
+          // Ensure the MainPage instance is properly cleaned up
           mainPage.destroy();
-          // 对话页面结束后，直接重新显示欢迎页面，不需要等待用户按键
+          // After the conversation page ends, directly redisplay the welcome page without waiting for a key press
           await this.show();
         } catch (error) {
-          console.error('  ' + chalk.red('对话页面出现错误:'), error);
-          // 出错时也重新显示欢迎页面
+          console.error('  ' + chalk.red('An error occurred in the conversation page:'), error);
+          // Redisplay the welcome page on error as well
           await this.show();
         }
         return;
@@ -232,26 +232,26 @@ export class WelcomeScreen {
       case 'config':
         const configPage = new ConfigPage();
         await configPage.show();
-        // 配置页面完成后，确保终端状态完全重置
+        // After the config page is done, ensure the terminal state is fully reset
         await this.ensureTerminalReset();
-        // 重新显示完整的欢迎页
+        // Redisplay the complete welcome page
         await this.show();
         return;
 
       case 'language':
         await this.handleLanguageSelection();
-        return; // 直接返回，语言切换后会重新显示界面
+        return; // Return directly, the interface will be redisplayed after language switch
 
       case 'help':
         const helpPage = new HelpPage();
         await helpPage.show();
-        // 帮助页面结束后，等待用户按键继续
+        // After the help page is done, wait for user to press a key to continue
         console.log();
         await input({
           message: '  ' + chalk.gray(messages.welcome.actions.pressEnter)
         });
 
-        // 强制清屏后重新显示完整的欢迎页面
+        // Force clear screen and then redisplay the complete welcome page
         process.stdout.write('\x1B[2J\x1B[3J\x1B[H');
         console.clear();
         process.stdout.write('\x1Bc');
@@ -283,7 +283,7 @@ export class WelcomeScreen {
       const messages = languageService.getMessages();
       await AnimationUtils.showActionAnimation(messages.welcome.actions.changingLanguage);
 
-      // 重新显示整个界面
+      // Redisplay the entire interface
       await this.show();
     } else {
       await this.showMainMenu();
@@ -294,7 +294,7 @@ export class WelcomeScreen {
     console.log('\n'.repeat(5));
     const messages = languageService.getMessages();
 
-    // 显示告别消息
+    // Show farewell message
     const farewell = figlet.textSync('GOODBYE', {
       font: 'ANSI Shadow',
       horizontalLayout: 'default',
@@ -311,13 +311,13 @@ export class WelcomeScreen {
     const messages = languageService.getMessages();
     const configCheck = messages.welcome.configCheck;
 
-    // 显示配置警告
+    // Show configuration warning
     console.log();
     console.log('  ' + chalk.yellow.bold(configCheck.incompleteConfig));
     console.log();
     console.log('  ' + chalk.gray(configCheck.missingItems));
 
-    // 显示缺少的配置项
+    // Show missing configuration items
     missingItems.forEach(item => {
       let itemName = '';
       switch (item) {
@@ -336,7 +336,7 @@ export class WelcomeScreen {
 
     console.log();
 
-    // 显示选择菜单 - 只允许前往配置或返回主菜单
+    // Show selection menu - only allow going to config or back to main menu
     const choices: MenuChoice[] = [
       {
         name: configCheck.goToConfig,
@@ -359,17 +359,17 @@ export class WelcomeScreen {
   }
 
   /**
-   * 确保终端状态完全重置，防止外部编辑器等工具影响后续交互
+   * Ensures the terminal state is fully reset to prevent interference from external tools like editors.
    */
   private async ensureTerminalReset(): Promise<void> {
-    // 恢复光标显示
+    // Restore cursor visibility
     process.stdout.write('\x1B[?25h');
 
-    // 确保stdin处于正确状态
+    // Ensure stdin is in the correct state
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(false);
       process.stdin.pause();
-      // 短暂延迟确保状态重置完成
+      // A short delay to ensure the state reset is complete
       await new Promise(resolve => setTimeout(resolve, 100));
       process.stdin.resume();
     }
