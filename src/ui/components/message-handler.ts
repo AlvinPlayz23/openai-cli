@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import boxen from 'boxen';
 import { highlight } from 'cli-highlight';
 import { createPatch } from 'diff';
 import * as fs from 'fs';
@@ -14,6 +15,129 @@ import { AnimationUtils, LoadingController } from '../../utils';
 import type { Message } from '../../utils/token-calculator';
 import { TokenCalculator } from '../../utils/token-calculator';
 import { StreamRenderer } from './stream-renderer';
+import { HistoryEditor } from './history-editor';
+// Unified border colors for chat boxes
+const BORDER_COLORS = {
+    user: 'blue',
+    ai: 'green',
+    tool: 'yellow'
+} as const;
+// Tool output visibility toggle
+let TOOL_OUTPUT_VISIBLE = false; // global within module
+// Reasoning visibility toggle
+var REASONING_VISIBLE = false;
+
+function formatToolSummary(functionName: string, parameters: any, result: any): { title: string; lines?: number; display: string; target: string; targetShort: string } {
+    const mapName = (fn: string): string => {
+        if (fn.includes('read_file')) return 'Read';
+        if (fn.includes('list_directory')) return 'List';
+        if (fn.includes('search_files')) return 'Search Files';
+        if (fn.includes('search_file_content')) return 'Search Content';
+        if (fn.includes('code_reference_search')) return 'Code Ref';
+        if (fn.includes('execute_command')) return 'Run';
+        if (fn.includes('todos')) return 'Todos';
+        if (fn.includes('file-system')) return 'FS';
+        return fn;
+    };
+    const display = mapName(functionName);
+    const target = parameters?.path || parameters?.keyword || parameters?.query || parameters?.command || parameters?.processId || '';
+
+    // format target
+    let targetStr = String(target);
+    try {
+        if (targetStr) {
+            const cwd = process.cwd();
+            if (path.isAbsolute(targetStr)) {
+                targetStr = path.relative(cwd, targetStr) || targetStr;
+            }
+            // normalize separators for display only
+            targetStr = targetStr.replace(/\\/g, '/');
+        }
+    } catch {}
+    const targetShort = targetStr ? path.basename(targetStr) : '';
+
+    const title = display + (targetShort ? `(${targetShort})` : '');
+
+    // Determine line count
+    let lines: number | undefined;
+    if (typeof result === 'string') {
+        lines = result.split('\n').length;
+    } else if (result?.content && typeof result.content === 'string') {
+        lines = result.content.split('\n').length;
+    } else if (typeof result?.totalLines === 'number') {
+        lines = result.totalLines;
+    }
+    return { title, lines, display, target: String(target), targetShort };
+}
+
+
+// Lightweight language detection adapted from cn-cli-components
+function detectLanguage(code: string): string {
+    const patterns = [
+        { regex: /^\s*import\s+.*from\s+['"]/m, language: 'javascript' },
+        { regex: /^\s*const\s+\w+\s*=\s*require\s*\(/m, language: 'javascript' },
+        { regex: /^\s*function\s+\w+\s*\(/m, language: 'javascript' },
+        { regex: /^\s*interface\s+\w+/m, language: 'typescript' },
+        { regex: /^\s*type\s+\w+\s*=/m, language: 'typescript' },
+        { regex: /^\s*def\s+\w+.*:/m, language: 'python' },
+        { regex: /^\s*class\s+\w+.*:/m, language: 'python' },
+        { regex: /^\s*public\s+class\s+\w+/m, language: 'java' },
+
+        { regex: /^\s*#include\s*</m, language: 'c' },
+        { regex: /^\s*using\s+namespace\s+/m, language: 'cpp' },
+        { regex: /^\s*using\s+System\s*;/m, language: 'csharp' },
+        { regex: /^\s*package\s+main/m, language: 'go' },
+        { regex: /^\s*fn\s+\w+\s*\(/m, language: 'rust' },
+        { regex: /^\s*<\?php/m, language: 'php' },
+        { regex: /^\s*SELECT\s+.*FROM\s+/im, language: 'sql' },
+        { regex: /^\s*\{\s*$/m, language: 'json' },
+        { regex: /^\s*---\s*$/m, language: 'yaml' },
+        { regex: /^\s*#!/m, language: 'bash' },
+        { regex: /^\s*<(!DOCTYPE html|html)/im, language: 'html' },
+        { regex: /^\s*@media\s+/m, language: 'css' },
+        { regex: /^\s*#\s+/m, language: 'markdown' },
+    ];
+    for (const pattern of patterns) {
+        if (pattern.regex.test(code)) return pattern.language;
+    }
+    return 'javascript';
+}
+
+// Render markdown-like content to a chalk-formatted string
+function renderMarkdown(content: string): string {
+    if (!content) return '';
+
+    // Replace <think> blocks first
+    content = content.replace(/<think>([\s\S]*?)<\/think>/g, (_m, p1) => chalk.dim(p1.trim()));
+
+    // Handle fenced code blocks
+    content = content.replace(/```(?:(\w+)\n)?([\s\S]*?)```/g, (_m, lang, code) => {
+        const language = (lang && String(lang).trim()) || detectLanguage(code);
+        const highlighted = highlight(code.trim(), { language: language as any });
+        return highlighted;
+    });
+
+    // Headings
+    content = content.replace(/^#{1}\s+(.+)$/gm, (_m, p1) => chalk.bold.cyan(p1));
+    content = content.replace(/^#{2}\s+(.+)$/gm, (_m, p1) => chalk.bold.blue(p1));
+    content = content.replace(/^#{3}\s+(.+)$/gm, (_m, p1) => chalk.bold.magenta(p1));
+    content = content.replace(/^#{4}\s+(.+)$/gm, (_m, p1) => chalk.bold.yellow(p1));
+
+    // Bold, italic, strike, inline code
+    content = content.replace(/\*\*(.+?)\*\*/g, (_m, p1) => chalk.bold(p1));
+    content = content.replace(/_(.+?)_/g, (_m, p1) => chalk.italic(p1));
+    content = content.replace(/\*((?:[^\s*][^*]*[^\s*])|[^\s*])\*/g, (_m, p1) => chalk.italic(p1));
+    content = content.replace(/~~([^~]+)~~/g, (_m, p1) => chalk.strikethrough(p1));
+    content = content.replace(/`([^`\n]+)`/g, (_m, p1) => chalk.magentaBright(p1));
+
+
+
+    // Links [text](url)
+    content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, text, url) => chalk.blue.underline(text) + chalk.dim(` (${url})`));
+
+    return content;
+}
+
 
 export interface ChatState {
     canSendMessage: boolean;
@@ -47,10 +171,64 @@ export class MessageHandler {
         languageService.onLanguageChange((language) => {
             this.currentMessages = languageService.getMessages();
         });
+        this.bindToolOutputToggle();
     }
+    
+    private bindToolOutputToggle(): void {
+        try {
+            const stdin = process.stdin;
+            if (!stdin.isTTY) return;
+            
+            // Store the original mode
+            const originalMode = stdin.isRaw;
+            
+            stdin.setEncoding('utf8');
+            
+            // Create a listener for key events
+            const keyListener = (key: string) => {
+                // Ctrl+O (ASCII 15)
+                if (key === '\u000f') {
+                    TOOL_OUTPUT_VISIBLE = !TOOL_OUTPUT_VISIBLE;
+                    const status = TOOL_OUTPUT_VISIBLE ? 'ON' : 'OFF';
+                    process.stdout.write(`\n${chalk.cyan('Tool output visibility:')} ${chalk.bold(status)}\n\n`);
+                }
+                // Ctrl+R (ASCII 18)
+                else if (key === '\u0012') {
+                    REASONING_VISIBLE = !REASONING_VISIBLE;
+                    const status = REASONING_VISIBLE ? 'ON' : 'OFF';
+                    process.stdout.write(`\n${chalk.cyan('Reasoning visibility:')} ${chalk.bold(status)}\n\n`);
+                }
+            };
+            
+            // Remove any existing listeners to avoid duplicates
+            stdin.removeAllListeners('data');
+            stdin.on('data', keyListener);
+        } catch (error) {
+            console.debug('Failed to bind tool output toggle:', error);
+        }
+    }
+
 
     updateLanguage(messages: Messages): void {
         this.currentMessages = messages;
+    }
+    
+    /**
+     * Display keyboard shortcuts help at the bottom
+     */
+    displayKeyboardShortcuts(): void {
+        const shortcuts = [
+            { key: 'Ctrl+O', desc: 'Toggle tool output' },
+            { key: 'Ctrl+R', desc: 'Toggle reasoning' },
+        ];
+        
+        const shortcutText = shortcuts
+            .map(s => `${chalk.cyan(s.key)}: ${chalk.dim(s.desc)}`)
+            .join(chalk.dim(' • '));
+        
+        console.log();
+        console.log(chalk.dim('  Keyboard Shortcuts: ') + shortcutText);
+        console.log();
     }
 
     /**
@@ -73,33 +251,21 @@ export class MessageHandler {
      */
     displayMessage(message: Message): void {
         const messages = languageService.getMessages();
-        const timeStr = message.timestamp.toLocaleTimeString(messages.main.messages.format.timeLocale, {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
 
         if (message.type === 'user') {
-            // 美化用户消息标签
-            const userColor = chalk.hex('#4F46E5');
-            const userPrefix = chalk.bgHex('#4F46E5').white.bold(` ${messages.main.messages.userLabel} `) + userColor(` ${timeStr} `);
-            process.stdout.write(userPrefix + '\n' + chalk.cyan('❯ ') + chalk.white(message.displayContent || message.content) + '\n\n');
+            const label = messages.main.messages.userLabel;
+            process.stdout.write('\n' + chalk.blue(label));
+            process.stdout.write('\n' + chalk.white(message.displayContent || message.content) + '\n');
         } else if (message.type === 'ai' || message.type === 'tool') {
-            // 美化AI或工具消息标签
             const isTool = message.type === 'tool';
             const label = isTool ? messages.main.messages.toolLabel : messages.main.messages.aiLabel;
-            const aiColor = chalk.hex('#059669');
-            const bgColor = isTool ? chalk.bgYellow.black : chalk.bgHex('#059669').white;
+            const color = isTool ? chalk.yellow : chalk.green;
 
-            const prefix = bgColor.bold(` ${label} `) + aiColor(` ${timeStr} `);
-            process.stdout.write(prefix + '\n');
+            const contentToRender = message.displayContent || message.content || '';
+            const rendered = renderMarkdown(typeof contentToRender === 'string' ? contentToRender : JSON.stringify(contentToRender));
 
-            // 重置渲染器并处理完整内容
-            this.streamRenderer.reset();
-            const contentToRender = message.displayContent || message.content;
-            const formattedContent = this.streamRenderer.processChunk(contentToRender);
-            const finalContent = this.streamRenderer.finalize();
-
-            process.stdout.write(formattedContent + finalContent + '\n');
+            process.stdout.write('\n' + color(label));
+            process.stdout.write('\n' + rendered + '\n');
         }
     }
 
@@ -108,21 +274,10 @@ export class MessageHandler {
      */
     displayAIResponse(content: string): void {
         const messages = languageService.getMessages();
-        const timeStr = new Date().toLocaleTimeString(messages.main.messages.format.timeLocale, {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
 
-        // 美化AI回复标签
-        const aiColor = chalk.hex('#059669');
-        const aiPrefix = chalk.bgHex('#059669').white.bold(` ${messages.main.messages.aiLabel} `) + aiColor(` ${timeStr} `);
-
-        // 使用流式渲染器处理内容
-        this.streamRenderer.reset();
-        const formattedContent = this.streamRenderer.processChunk(content);
-        const finalContent = this.streamRenderer.finalize();
-
-        process.stdout.write(aiPrefix + '\n' + formattedContent + finalContent + '\n\n');
+        const rendered = renderMarkdown(content);
+        process.stdout.write('\n' + chalk.green(messages.main.messages.aiLabel));
+        process.stdout.write('\n' + rendered + '\n');
     }
 
     /**
@@ -177,6 +332,36 @@ When you see such a message, you MUST:
 4.  If it's incorrect, call the tool again with the necessary corrections.
 **Verification is your highest priority.** Do not proceed until you have confirmed the tool's action.`;
         promptParts.push(toolVerificationPrompt);
+
+        // Add Context7 documentation tool usage instruction
+        const context7Prompt = `**Context7 Documentation Tool:**
+You have access to the Context7 documentation tools that provide up-to-date, version-specific documentation for any library or framework.
+
+**CRITICAL: You MUST use Context7 tools whenever:**
+1. The user asks about implementing features with any library/framework (e.g., "create auth with Supabase")
+2. You need to generate code that uses external libraries
+3. You're unsure about current API usage, methods, or best practices
+4. The user mentions a specific package or technology
+
+**How to use Context7:**
+1. First, call 'resolve_library_id' with the library name (e.g., "supabase", "next.js", "react")
+2. Review the search results and select the most relevant library ID
+3. Then call 'get_library_docs' with the exact library ID (format: '/org/project' or '/org/project/version')
+4. Use the retrieved documentation to write accurate, up-to-date code
+
+**Example workflow:**
+- User: "Create a Next.js API route with rate limiting"
+- You: Call resolve_library_id({ libraryName: "next.js" })
+- You: Call get_library_docs({ context7CompatibleLibraryID: "/vercel/next.js", topic: "api routes" })
+- You: Generate code using the fresh documentation
+
+**Do NOT:**
+- Generate code based on outdated knowledge when current docs are available
+- Skip Context7 lookup for any library-specific implementations
+- Assume API methods exist without verification
+
+**Always prioritize fresh documentation over training data for library-specific code.**`;
+        promptParts.push(context7Prompt);
 
         if (selectedTextFiles.length > 0) {
             const fileList = selectedTextFiles.map(file => `- ${file}`).join('\n');
@@ -305,14 +490,20 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                                 hour: '2-digit',
                                 minute: '2-digit'
                             });
-                            const thinkingColor = chalk.hex('#6B7280');
-                            const thinkingPrefix = chalk.bgHex('#6B7280').white.bold(` Thinking `) + thinkingColor(` ${timeStr} `);
-                            process.stdout.write(thinkingPrefix + '\n');
+                            // Simple thinking indicator
+                            const thinkingPrefix = chalk.bgHex('#6B7280').white.bold(` Thinking `) + 
+                                                 chalk.hex('#6B7280')(` ${timeStr} `);
+                            process.stdout.write(`\n${thinkingPrefix}\n`);
+                            if (REASONING_VISIBLE) {
+                                process.stdout.write(chalk.dim('┌─ Reasoning ──────────────────────────────────\n'));
+                            }
                             isFirstReasoningChunk = false;
                         }
-                        const formattedChunk = this.reasoningStreamRenderer.processChunk(chunk);
-                        if (formattedChunk) {
-                            process.stdout.write(chalk.gray(formattedChunk));
+                        if (REASONING_VISIBLE) {
+                            const formattedChunk = this.reasoningStreamRenderer.processChunk(chunk);
+                            if (formattedChunk) {
+                                process.stdout.write(chalk.dim('│ ') + chalk.gray(formattedChunk));
+                            }
                         }
                         startLoading();
                     },
@@ -325,8 +516,12 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                             process.stdout.write(finalContent);
                         }
                         const finalReasoningContent = this.reasoningStreamRenderer.finalize();
-                        if (finalReasoningContent) {
-                            process.stdout.write(chalk.gray(finalReasoningContent));
+                        if (finalReasoningContent && REASONING_VISIBLE) {
+                            process.stdout.write(chalk.dim('│ ') + chalk.gray(finalReasoningContent));
+                            process.stdout.write('\n' + chalk.dim('└──────────────────────────────────────────────\n'));
+                        } else if (finalReasoningContent && !REASONING_VISIBLE) {
+                            // Show hint that reasoning is available
+                            process.stdout.write(chalk.dim('  Reasoning available (Ctrl+R to toggle)\n'));
                         }
                         this.reasoningStreamRenderer.reset();
 
@@ -341,21 +536,8 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                     },
                     onChunk: (chunk: string) => {
                         stopLoading();
-                        if (isFirstChunk) {
-                            const timeStr = new Date().toLocaleTimeString(messages.main.messages.format.timeLocale, {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            });
-                            const aiColor = chalk.hex('#059669');
-                            const aiPrefix = chalk.bgHex('#059669').white.bold(` ${messages.main.messages.aiLabel} `) + aiColor(` ${timeStr} `);
-                            process.stdout.write(aiPrefix + '\n');
-                            isFirstChunk = false;
-                        }
-
-                        const formattedChunk = this.streamRenderer.processChunk(chunk);
-                        if (formattedChunk) {
-                            process.stdout.write(formattedChunk);
-                        }
+                        // Buffer streamed chunks and format internally without printing
+                        this.streamRenderer.processChunk(chunk);
                         aiResponseContent += chunk;
                         startLoading();
                     },
@@ -363,20 +545,19 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                         stopLoading();
 
                         const finalContent = this.streamRenderer.finalize();
-                        if (finalContent) {
-                            process.stdout.write(finalContent);
-                        }
                         const finalReasoningContent = this.reasoningStreamRenderer.finalize();
-                        if (finalReasoningContent) {
-                            process.stdout.write(chalk.gray(finalReasoningContent));
+                        
+                        // Close reasoning box if visible
+                        if (finalReasoningContent && REASONING_VISIBLE) {
+                            process.stdout.write('\n' + chalk.dim('└──────────────────────────────────────────────\n\n'));
                         }
                         this.reasoningStreamRenderer.reset();
 
-                        if (finalContent || fullResponse) {
-                            process.stdout.write('\n\n');
-                        } else if (!isFirstReasoningChunk) {
-                            process.stdout.write('\n\n');
-                        }
+                        const combined = (finalContent || '') || aiResponseContent || fullResponse || '';
+                        const rendered = renderMarkdown(combined);
+                        
+                        process.stdout.write('\n' + chalk.green(messages.main.messages.aiLabel));
+                        process.stdout.write('\n' + rendered + '\n');
 
                         if (fullResponse) {
                             const aiMessage: Message = {
@@ -391,12 +572,13 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                     onError: (error: Error) => {
                         stopLoading();
                         const finalReasoningContent = this.reasoningStreamRenderer.finalize();
-                        if (finalReasoningContent) {
-                            process.stdout.write(chalk.gray(finalReasoningContent) + '\n\n');
+                        if (finalReasoningContent && REASONING_VISIBLE) {
+                            process.stdout.write('\n' + chalk.dim('└──────────────────────────────────────────────\n\n'));
                         }
+                        
+                        // Simple error display
                         const errorMsg = `${messages.main.status.connectionError}: ${error.message}`;
                         process.stdout.write(chalk.red(errorMsg) + '\n\n');
-                        //console.log(chalk.gray(JSON.stringify(chatMessages, null, 2)));
                         continueConversation = false; // Stop loop on error
                     }
                 });
@@ -404,9 +586,11 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                 if (result.status === 'tool_calls') {
                     stopLoading();
                     const toolCalls = result.assistantResponse.tool_calls || [];
+                    
                     for (const toolCall of toolCalls) {
                         await this.handleToolCall(toolCall);
                     }
+                    
                     // Continue loop to let AI respond to tool results
                 } else {
                     continueConversation = false; // 'done' or error
@@ -446,7 +630,10 @@ If it has been completed, remember to call the 'update_todos' tool to update the
             const functionName = toolCall.function.name;
             const parameters = JSON.parse(toolCall.function.arguments || '{}');
 
-            console.log(chalk.yellow.bold(`${messages.main.messages.toolCall.calling.replace('{name}', functionName)}`));
+            // Simple tool call indicator
+            const summaryIntro = formatToolSummary(functionName, parameters, null);
+            const intro = `${chalk.cyan(summaryIntro.display)}${summaryIntro.targetShort ? chalk.gray(` (${summaryIntro.targetShort})`) : ''}`;
+            process.stdout.write(`\n${intro}\n`);
 
             const needsConfirmation = StorageService.isFunctionConfirmationRequired(functionName);
 
@@ -536,6 +723,28 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                 resultContent = `✅ **Tool Result: ${functionName}**\n\n${String(result)}`;
             }
 
+            // Enhanced tool result summary with better visual hierarchy
+            const summary = formatToolSummary(functionName, parameters, result);
+            const linesText = typeof summary.lines === 'number' ? chalk.dim(` • ${summary.lines} lines`) : '';
+            const successIcon = chalk.green('✓');
+            process.stdout.write(chalk.gray(`  ${successIcon} ${summary.display}${linesText}`) + '\n');
+            
+            if (TOOL_OUTPUT_VISIBLE) {
+                const rendered = renderMarkdown(resultContent);
+                const boxed = boxen(rendered, { 
+                    padding: 1, 
+                    borderStyle: 'round', 
+                    borderColor: BORDER_COLORS.tool, 
+                    title: `${messages.main.messages.toolLabel} Output`,
+                    titleAlignment: 'left' 
+                });
+                process.stdout.write(`\n${boxed}\n`);
+            } else {
+                // Show hint about Ctrl+O to view output
+                process.stdout.write(chalk.dim(`  Press Ctrl+O to toggle tool output visibility\n`));
+            }
+
+
             const toolResultMessage: Message = {
                 type: 'tool',
                 tool_call_id: toolCall.id,
@@ -550,6 +759,10 @@ If it has been completed, remember to call the 'update_todos' tool to update the
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             console.log(chalk.red(messages.main.messages.toolCall.failed.replace('{error}', errorMsg)));
 
+            // Simple error indicator
+            const title = `Error in ${toolCall.function?.name || 'Unknown'}`;
+            process.stdout.write(`\n${chalk.red(title)}\n${chalk.red(errorMsg)}\n`);
+
             const errorMessage: Message = {
                 type: 'tool',
                 tool_call_id: toolCall.id,
@@ -558,7 +771,7 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                     error: errorMsg,
                     tool_call_id: toolCall.id,
                 },
-                displayContent: `❌ **Tool Error: ${toolCall.function?.name || 'Unknown'}**\n\n**Error:** ${errorMsg}\n\n**Parameters:**\n\`\`\`json\n${JSON.stringify(JSON.parse(toolCall.function?.arguments || '{}'), null, 2)}\n\`\`\``,
+                displayContent: `Error: ${errorMsg}`,
                 timestamp: new Date()
             };
             this.callbacks.addMessage(errorMessage);
@@ -575,13 +788,12 @@ If it has been completed, remember to call the 'update_todos' tool to update the
 
         console.log();
         console.log(chalk.yellow(messages.main.messages.toolCall.handle));
-        // console.log(chalk.white(`Tool: ${chalk.bold(functionName)}`));
-        // console.log(chalk.white(`Parameters: ${chalk.gray(JSON.stringify(parameters, null, 2))}`));
+        console.log(chalk.white(`Tool: ${chalk.bold(functionName)}`));
 
         if (diff) {
             console.log(chalk.yellow.bold('--- Proposed Changes ---'));
             console.log(highlight(diff, { language: 'diff' }));
-            console.log(chalk.yellow.bold('----------------------'));
+            console.log(chalk.yellow.bold('------------------------'));
         }
 
         return new Promise((resolve) => {

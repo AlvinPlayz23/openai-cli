@@ -13,7 +13,7 @@ process.on('warning', (warning) => {
 
 import { Command } from 'commander';
 import { GlobalMCPManager } from './mcp/manager';
-import { WelcomeScreen } from './ui/screens/welcome';
+import { MainPage } from './ui/pages/main';
 
 // 导出MCP模块供外部使用
 export * from './mcp';
@@ -33,6 +33,12 @@ program
       const { StorageService } = await import('./services/storage');
       StorageService.initializeConfig();
 
+      // Set Context7 API key from config if available
+      const apiConfig = StorageService.getApiConfig();
+      if (apiConfig.context7ApiKey) {
+        process.env.CONTEXT7_API_KEY = apiConfig.context7ApiKey;
+      }
+
       // 更新MCP配置（修复旧配置）
       StorageService.updateMcpConfig();
 
@@ -40,9 +46,9 @@ program
       const mcpManager = GlobalMCPManager.getInstance();
       await mcpManager.initialize();
 
-      // 启动主界面
-      const welcome = new WelcomeScreen();
-      await welcome.show();
+      // 直接启动聊天界面
+      const mainPage = new MainPage();
+      await mainPage.show();
     } catch (error) {
       console.error('启动失败:', error);
       process.exit(1);

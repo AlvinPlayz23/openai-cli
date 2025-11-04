@@ -6,6 +6,7 @@ import { SystemDetector } from '../../services/system-detector';
 import { Messages } from '../../types/language';
 import { LoadingController, StringUtils } from '../../utils';
 import { ChatState, CommandManager, FileSearchManager, HelpManager, InitHandler, InputHandler, InputState, Message, MessageHandler, MessageHandlerCallbacks, ResponseManager } from '../components';
+import { ConfigPage } from './config';
 
 export class MainPage {
   private messages: Message[] = [];
@@ -196,6 +197,20 @@ export class MainPage {
     this.destroy();
     await this.show();
   }
+  
+  // 显示配置页面
+  async showConfigPage(): Promise<void> {
+    try {
+      const configPage = new ConfigPage();
+      await configPage.show();
+      
+      // 配置完成后返回聊天
+      await this.reload();
+    } catch (error) {
+      console.error('Configuration error:', error);
+      await this.reload();
+    }
+  }
 
   /**
    * 刷新欢迎框显示（配置变更时调用）
@@ -233,6 +248,16 @@ export class MainPage {
     const currentDir = process.cwd();
     const apiConfig = StorageService.getApiConfig();
 
+    // ASCII Art for OpenAI CLI
+    const asciiArt = `
+   ___                   _    ___   ___ _    ___ 
+  / _ \\ _ __   ___ _ __ / \\  |_ _| / __| |  |_ _|
+ | | | | '_ \\ / _ \\ '_ \\ / _ \\  | | | |  | |   | |
+ | |_| | |_) |  __/ | | / ___ \\ | | | |__| |___ | |
+  \\___/| .__/ \\___|_| |_/_/   \\_|___| \\____|_____|___|
+       |_|                                            
+    `.trim();
+
     // 简化配置信息显示
     const configLines = [
       `${chalk.gray('Directory:')} ${chalk.white(currentDir)}`,
@@ -242,20 +267,19 @@ export class MainPage {
 
     // 欢迎方框 - 更紧凑的设计
     const welcomeBox = boxen(
-      chalk.hex('#FF6B6B').bold(main.title) + '\n' +
-      chalk.hex('#4ECDC4').italic(main.subtitle) + '\n\n' +
+      chalk.cyan(asciiArt) + '\n\n' +
       configLines.join('\n'),
       {
         padding: { top: 1, bottom: 1, left: 2, right: 2 },
         margin: { top: 1, bottom: 0, left: 2, right: 2 },
         borderStyle: 'round',
-        borderColor: 'magenta',
-        title: chalk.white.bold('Welcome'),
+        borderColor: 'cyan',
+        title: chalk.cyan.bold('AI Coding Assistant'),
         titleAlignment: 'center'
       }
     );
 
-    process.stdout.write(welcomeBox + '\n');
+    console.log(welcomeBox);
   }
 
   async show(): Promise<void> {
@@ -292,8 +316,8 @@ export class MainPage {
     // 显示欢迎框
     this.showWelcomeBox();
 
-    // 在显示输入之前先进行系统检测
-    await this.performSystemDetection();
+    // Skip system detection display
+    // await this.performSystemDetection();
 
     // 开始聊天循环
     await this.startChatLoop();
@@ -335,7 +359,8 @@ export class MainPage {
         // 获取用户输入
         const userInput = await this.getUserInput();
 
-        if (userInput === '/exit') {
+        // Handle /exit and /quit commands
+        if (userInput === '/exit' || userInput === '/quit') {
           const exitAction = await this.commandManager.handleExitWithHistoryCheck(this.messages);
           if (exitAction !== 'cancel') {
             break;
@@ -344,11 +369,16 @@ export class MainPage {
           }
         }
 
-
         // 使用 CommandManager 处理用户输入
         const commandResult = await this.commandManager.handleInput(userInput, this.messages);
 
         if (commandResult.handled) {
+          // Handle /config command
+          if (commandResult.shouldShowConfig) {
+            await this.showConfigPage();
+            continue;
+          }
+          
           // 命令已被处理
           if (commandResult.shouldReload) {
             await this.reload();
@@ -382,15 +412,6 @@ export class MainPage {
             case '/help':
               this.helpManager.showHelp(this.commandManager.getCommands());
               break;
-            case '/config':
-              process.stdout.write(chalk.yellow(this.currentMessages.main.messages.configInDevelopment + '\n'));
-              break;
-            case '/history':
-              this.commandManager.showHistory(this.messages);
-              break;
-            case '/init':
-              await this.handleInitCommand();
-              break;
             default:
               // 未知命令
               process.stdout.write(chalk.red(this.currentMessages.main.messages.unknownCommand.replace('{command}', userInput) + '\n'));
@@ -421,9 +442,9 @@ export class MainPage {
       let lastDisplayLines = 1;
       let lastSuggestionLines = 0;
 
-      // 显示初始提示符
-      const promptText = chalk.cyan(this.currentMessages.main.prompt);
-      process.stdout.write(promptText);
+      // Simple prompt without box
+      const promptText = chalk.cyan('> ');
+      process.stdout.write('\n' + promptText);
 
       // 单行输入框渲染
       const redrawInputLine = () => {
@@ -452,7 +473,7 @@ export class MainPage {
         }
         process.stdout.write('\r');
         
-        // 计算新内容的显示信息
+        // 计算新内容的显示信息 - only the prompt and input, not the box
         const displayText = promptText + currentInput;
         const displayWidth = StringUtils.getDisplayWidth(displayText);
         const newDisplayLines = Math.ceil(displayWidth / terminalWidth) || 1;
@@ -464,7 +485,7 @@ export class MainPage {
         lastDisplayLines = newDisplayLines;
 
         // 计算并设置光标位置
-        const promptLength = StringUtils.getDisplayWidth(this.currentMessages.main.prompt);
+        const promptLength = StringUtils.getDisplayWidth(promptText);
         const inputToCursor = currentInput.substring(0, cursorPosition);
         const cursorOffset = StringUtils.getDisplayWidth(inputToCursor);
         const totalCursorPos = promptLength + cursorOffset;

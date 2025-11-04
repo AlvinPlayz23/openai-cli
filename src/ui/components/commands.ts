@@ -19,6 +19,7 @@ export interface CommandExecutionResult {
     shouldContinue?: boolean;
     newMessages?: Message[];
     shouldReload?: boolean;
+    shouldShowConfig?: boolean;
 }
 
 export class CommandManager {
@@ -43,6 +44,16 @@ export class CommandManager {
                 value: '/exit',
                 name: mainCommands.exit.name,
                 description: mainCommands.exit.description
+            },
+            {
+                value: '/quit',
+                name: 'Quit',
+                description: 'Exit the application'
+            },
+            {
+                value: '/config',
+                name: 'Configuration',
+                description: 'Open configuration settings'
             },
             {
                 value: '/clear',
@@ -216,6 +227,9 @@ export class CommandManager {
         }
 
         switch (userInput) {
+            case '/config':
+                return { handled: true, shouldContinue: false, shouldExit: false, shouldShowConfig: true };
+
             case '/export-history':
                 return await this.handleExportHistory(currentMessages);
 

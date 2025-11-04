@@ -1,6 +1,6 @@
 import { checkbox, editor } from '@inquirer/prompts';
 import chalk from 'chalk';
-import figlet from 'figlet';
+import boxen from 'boxen';
 import { languageService } from '../../services/language';
 import { McpConfig, McpFunctionConfirmationConfig, StorageService } from '../../services/storage';
 import { AnimationUtils, StringUtils } from '../../utils';
@@ -18,100 +18,118 @@ export class ConfigPage {
   private async showHeader(): Promise<void> {
     const messages = languageService.getMessages();
 
-    // 显示配置页面标题
-    const configTitle = figlet.textSync('CONFIG', {
-      font: 'ANSI Shadow',
-      horizontalLayout: 'default',
-      verticalLayout: 'default',
-      width: 60
-    });
+    // Clean modern header with box
+    const header = boxen(
+      chalk.cyan.bold('⚙ CONFIGURATION') + '\n' +
+      chalk.gray(messages.config.subtitle || 'Manage your OpenAI CLI settings'),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        margin: { top: 1, bottom: 1, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'cyan',
+        titleAlignment: 'center'
+      }
+    );
 
-    console.log(this.gradients.secondary(configTitle));
-    console.log();
-
-    // 显示副标题
-    console.log('  ' + this.gradients.primary(messages.config.subtitle));
-    console.log();
-
-    // 显示分割线
-    console.log('  ' + chalk.gray('─'.repeat(60)));
-    console.log();
+    console.log(header);
   }
 
   private async showConfigMenu(): Promise<void> {
     const messages = languageService.getMessages();
+    const currentConfig = StorageService.getApiConfig();
+
+    // Display current configuration status
+    const statusBox = boxen(
+      chalk.white.bold('Current Configuration:\n\n') +
+      chalk.gray('API URL: ') + chalk.cyan(currentConfig.baseUrl || 'Not set') + '\n' +
+      chalk.gray('API Key: ') + chalk.cyan(currentConfig.apiKey ? StringUtils.maskApiKey(currentConfig.apiKey) : 'Not set') + '\n' +
+      chalk.gray('Context7 Key: ') + chalk.cyan(currentConfig.context7ApiKey ? StringUtils.maskApiKey(currentConfig.context7ApiKey) : 'Not set (optional)') + '\n' +
+      chalk.gray('Model: ') + chalk.cyan(currentConfig.model || 'Not set') + '\n' +
+      chalk.gray('Max Tokens: ') + chalk.cyan(String(currentConfig.contextTokens || '128000')),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        margin: { top: 0, bottom: 1, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'gray'
+      }
+    );
+    console.log(statusBox);
 
     const choices: MenuChoice[] = [
       {
-        name: messages.config.menuOptions.baseUrl,
+        name: chalk.blue('📡 ') + messages.config.menuOptions.baseUrl,
         value: 'baseUrl',
         description: messages.config.menuDescription.baseUrl
       },
       {
-        name: messages.config.menuOptions.apiKey,
+        name: chalk.yellow('🔑 ') + messages.config.menuOptions.apiKey,
         value: 'apiKey',
         description: messages.config.menuDescription.apiKey
       },
       {
-        name: messages.config.menuOptions.model,
+        name: chalk.cyan('🔐 Context7 API Key'),
+        value: 'context7ApiKey',
+        description: 'API key for Context7 documentation service (optional, for higher rate limits)'
+      },
+      {
+        name: chalk.green('🤖 ') + messages.config.menuOptions.model,
         value: 'model',
         description: messages.config.menuDescription.model
       },
       {
-        name: messages.config.menuOptions.contextTokens,
+        name: chalk.magenta('💾 ') + messages.config.menuOptions.contextTokens,
         value: 'contextTokens',
         description: messages.config.menuDescription.contextTokens
       },
       {
-        name: messages.config.menuOptions.maxConcurrency,
+        name: chalk.cyan('⚡ ') + messages.config.menuOptions.maxConcurrency,
         value: 'maxConcurrency',
         description: messages.config.menuDescription.maxConcurrency
       },
       {
-        name: messages.config.menuOptions.role,
+        name: chalk.blue('👤 ') + messages.config.menuOptions.role,
         value: 'role',
         description: messages.config.menuDescription.role
       },
       {
-        name: messages.config.menuOptions.mcpConfig,
+        name: chalk.green('🔌 ') + messages.config.menuOptions.mcpConfig,
         value: 'mcpConfig',
         description: messages.config.menuDescription.mcpConfig
       },
       {
-        name: messages.config.menuOptions.mcpFunctionConfirmation,
+        name: chalk.yellow('✓ ') + messages.config.menuOptions.mcpFunctionConfirmation,
         value: 'mcpFunctionConfirmation',
         description: messages.config.menuDescription.mcpFunctionConfirmation
       },
       {
-        name: messages.config.menuOptions.maxToolCalls,
+        name: chalk.cyan('🔧 ') + messages.config.menuOptions.maxToolCalls,
         value: 'maxToolCalls',
         description: messages.config.menuDescription.maxToolCalls
       },
-
       {
-        name: messages.config.menuOptions.terminalSensitiveWords,
+        name: chalk.red('⚠ ') + messages.config.menuOptions.terminalSensitiveWords,
         value: 'terminalSensitiveWords',
         description: messages.config.menuDescription.terminalSensitiveWords
       },
       {
-        name: messages.config.menuOptions.viewConfig,
+        name: chalk.gray('👁 ') + messages.config.menuOptions.viewConfig,
         value: 'viewConfig',
         description: messages.config.menuDescription.viewConfig
       },
       {
-        name: messages.config.menuOptions.resetConfig,
+        name: chalk.red('🔄 ') + messages.config.menuOptions.resetConfig,
         value: 'resetConfig',
         description: messages.config.menuDescription.resetConfig
       },
       {
-        name: messages.config.menuOptions.back,
+        name: chalk.gray('← ') + messages.config.menuOptions.back,
         value: 'back',
         description: messages.config.menuDescription.back
       }
     ];
 
     const action = await InteractiveMenu.show({
-      message: messages.config.menuPrompt + ':',
+      message: chalk.cyan('\nSelect configuration option:'),
       choices
     });
 
@@ -129,6 +147,10 @@ export class ConfigPage {
 
       case 'apiKey':
         await this.editApiKey();
+        break;
+
+      case 'context7ApiKey':
+        await this.editContext7ApiKey();
         break;
 
       case 'model':
@@ -193,17 +215,23 @@ export class ConfigPage {
     const messages = languageService.getMessages();
     const currentConfig = StorageService.getApiConfig();
 
-    console.log('  ' + chalk.cyan.bold(messages.config.menuOptions.baseUrl));
-    console.log('  ' + chalk.gray(messages.config.menuDescription.baseUrl));
-
-    if (currentConfig.baseUrl) {
-      console.log('  ' + chalk.gray(`${messages.config.labels.status}: ${currentConfig.baseUrl}`));
-    }
+    console.log();
+    const infoBox = boxen(
+      chalk.blue.bold('📡 API Base URL Configuration\n\n') +
+      chalk.gray('Current: ') + chalk.cyan(currentConfig.baseUrl || 'Not set') + '\n\n' +
+      chalk.dim(messages.config.menuDescription.baseUrl),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'blue'
+      }
+    );
+    console.log(infoBox);
     console.log();
 
     try {
       const baseUrl = await NativeInput.url(
-        '  ' + messages.config.prompts.baseUrlInput + ':',
+        chalk.blue('Enter API URL: '),
         currentConfig.baseUrl || messages.config.prompts.baseUrlPlaceholder
       );
       const result = { baseUrl };
@@ -211,10 +239,9 @@ export class ConfigPage {
       if (result.baseUrl && result.baseUrl.trim()) {
         await AnimationUtils.showActionAnimation(messages.config.actions.saving);
         StorageService.saveBaseUrl(result.baseUrl.trim());
-        console.log('  ' + chalk.green('✓ ' + messages.config.messages.configSaved));
+        console.log('\n' + chalk.green('✓ Configuration saved successfully!') + '\n');
       }
     } catch (error) {
-      // 用户按 ESC 或 Ctrl+C 取消输入，直接返回
       console.log();
       return;
     }
@@ -224,25 +251,62 @@ export class ConfigPage {
     const messages = languageService.getMessages();
     const currentConfig = StorageService.getApiConfig();
 
-    console.log('  ' + chalk.cyan.bold(messages.config.menuOptions.apiKey));
-    console.log('  ' + chalk.gray(messages.config.menuDescription.apiKey));
-
-    if (currentConfig.apiKey) {
-      const maskedKey = StringUtils.maskApiKey(currentConfig.apiKey);
-      console.log('  ' + chalk.gray(`${messages.config.labels.status}: ${maskedKey}`));
-    }
+    console.log();
+    const infoBox = boxen(
+      chalk.yellow.bold('🔑 API Key Configuration\n\n') +
+      chalk.gray('Current: ') + chalk.cyan(currentConfig.apiKey ? StringUtils.maskApiKey(currentConfig.apiKey) : 'Not set') + '\n\n' +
+      chalk.dim(messages.config.menuDescription.apiKey),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'yellow'
+      }
+    );
+    console.log(infoBox);
     console.log();
 
     try {
-      const apiKey = await NativeInput.text('  ' + messages.config.prompts.apiKeyInput + ':');
+      const apiKey = await NativeInput.text(chalk.yellow('Enter API Key: '));
 
       if (apiKey && apiKey.trim()) {
         await AnimationUtils.showActionAnimation(messages.config.actions.saving);
         StorageService.saveApiKey(apiKey.trim());
-        console.log('  ' + chalk.green('✓ ' + messages.config.messages.configSaved));
+        console.log('\n' + chalk.green('✓ API Key saved successfully!') + '\n');
       }
     } catch (error) {
-      // 用户按 ESC 或 Ctrl+C 取消输入，直接返回
+      console.log();
+      return;
+    }
+  }
+
+  private async editContext7ApiKey(): Promise<void> {
+    const currentConfig = StorageService.getApiConfig();
+
+    console.log();
+    const infoBox = boxen(
+      chalk.cyan.bold('🔐 Context7 API Key Configuration\n\n') +
+      chalk.gray('Current: ') + chalk.cyan(currentConfig.context7ApiKey ? StringUtils.maskApiKey(currentConfig.context7ApiKey) : 'Not set') + '\n\n' +
+      chalk.dim('Optional API key for Context7 documentation service.\nProvides higher rate limits and access to private repositories.\nGet your free key at: https://context7.com/dashboard'),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'cyan'
+      }
+    );
+    console.log(infoBox);
+    console.log();
+
+    try {
+      const apiKey = await NativeInput.text(chalk.cyan('Enter Context7 API Key (or leave empty to skip): '));
+
+      if (apiKey && apiKey.trim()) {
+        await AnimationUtils.showActionAnimation('Saving...');
+        StorageService.saveContext7ApiKey(apiKey.trim());
+        console.log('\n' + chalk.green('✓ Context7 API Key saved successfully!') + '\n');
+      } else if (apiKey === '') {
+        console.log('\n' + chalk.yellow('Context7 API Key not changed') + '\n');
+      }
+    } catch (error) {
       console.log();
       return;
     }
@@ -252,27 +316,33 @@ export class ConfigPage {
     const messages = languageService.getMessages();
     const currentConfig = StorageService.getApiConfig();
 
-    console.log('  ' + chalk.cyan.bold(messages.config.menuOptions.model));
-    console.log('  ' + chalk.gray(messages.config.menuDescription.model));
-
-    if (currentConfig.model) {
-      console.log('  ' + chalk.gray(`${messages.config.labels.status}: ${currentConfig.model}`));
-    }
+    console.log();
+    const infoBox = boxen(
+      chalk.green.bold('🤖 Model Configuration\n\n') +
+      chalk.gray('Current: ') + chalk.cyan(currentConfig.model || 'Not set') + '\n\n' +
+      chalk.dim(messages.config.menuDescription.model),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'green'
+      }
+    );
+    console.log(infoBox);
     console.log();
 
-    // 提供一些常用模型的选项，包含退出选项
+    // Common models with cleaner display
     const commonModelChoices: MenuChoice[] = [
-      { name: 'gpt-4.1', value: 'gpt-4.1' },
-      { name: 'gpt-4o', value: 'gpt-4o' },
-      { name: 'o3', value: 'o3' },
-      { name: 'o3-mini', value: 'o3-mini' },
-      { name: 'o4-mini', value: 'o4-mini' },
-      { name: messages.config.actions.custom, value: 'custom' },
-      { name: messages.config.actions.cancel, value: 'cancel' }
+      { name: chalk.cyan('GPT-4.1') + chalk.dim(' (Latest)'), value: 'gpt-4.1' },
+      { name: chalk.cyan('GPT-4o') + chalk.dim(' (Omni)'), value: 'gpt-4o' },
+      { name: chalk.cyan('O3') + chalk.dim(' (Advanced)'), value: 'o3' },
+      { name: chalk.cyan('O3-mini') + chalk.dim(' (Efficient)'), value: 'o3-mini' },
+      { name: chalk.cyan('O4-mini') + chalk.dim(' (Latest Mini)'), value: 'o4-mini' },
+      { name: chalk.yellow('✏ Custom model'), value: 'custom' },
+      { name: chalk.gray('← Cancel'), value: 'cancel' }
     ];
 
     const modelChoice = await InteractiveMenu.show({
-      message: '  ' + messages.config.prompts.modelInput + ':',
+      message: chalk.green('Select model:'),
       choices: commonModelChoices
     });
 

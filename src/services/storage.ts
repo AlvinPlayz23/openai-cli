@@ -13,6 +13,7 @@ export interface ApiConfig {
   role?: string;
   maxToolCalls?: number;
   terminalSensitiveWords?: string[];
+  context7ApiKey?: string;
 }
 
 // 配置变更监听器类型
@@ -184,6 +185,7 @@ export class StorageService {
       maxConcurrency: config.maxConcurrency || 5,
       role: config.role,
       maxToolCalls: config.maxToolCalls || 25,
+      context7ApiKey: config.context7ApiKey,
       terminalSensitiveWords: config.terminalSensitiveWords || [
         'rm -rf',
         'mv',
@@ -215,6 +217,18 @@ export class StorageService {
     const config = StorageService.readConfig();
     config.apiKey = apiKey;
     StorageService.writeConfig(config);
+    StorageService.notifyConfigChange();
+  }
+
+  /**
+   * 保存Context7 API密钥
+   */
+  static saveContext7ApiKey(apiKey: string): void {
+    const config = StorageService.readConfig();
+    config.context7ApiKey = apiKey;
+    StorageService.writeConfig(config);
+    // Set environment variable for Context7Service
+    process.env.CONTEXT7_API_KEY = apiKey;
     StorageService.notifyConfigChange();
   }
 

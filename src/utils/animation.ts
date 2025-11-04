@@ -32,6 +32,7 @@ export class AnimationUtils {
     const staticPart = '  ';  // 缩进
     const textPart = ` ${loadingText}`;  // 空格 + 彩色文字
 
+    // Simple dot spinner
     const frames = ['·', '•', '●', '●', '•', '·'];
     let frameIndex = 0;
     let animationInterval: NodeJS.Timeout | null = null;
