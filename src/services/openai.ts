@@ -13,6 +13,7 @@ export interface StreamChatOptions {
   onToolChunk: (toolChunk: any) => void;
   onAssistantMessage: (message: { content: string; toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] }) => void;
   onError: (error: Error) => void;
+  signal?: AbortSignal; // Add abort signal support
 }
 
 export interface StreamChatResult {
@@ -32,7 +33,7 @@ class OpenAIService {
     this.openai = null; // Initialize to null
     this.updateConfig();
 
-    // 监听配置变更事件
+    // Listen for config change events
     StorageService.onConfigChange(() => {
       this.updateConfig();
     });
@@ -71,19 +72,24 @@ class OpenAIService {
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
       try {
         const result = await this.performStreamChat(options, apiConfig);
-        
-        // 检查AI回复是否为空（算作失败）
+
+        // Check if AI response is empty (counts as failure)
         const hasContent = result.assistantResponse.content && result.assistantResponse.content.trim() !== '';
         const hasToolCalls = result.assistantResponse.tool_calls && result.assistantResponse.tool_calls.length > 0;
-        
+
         if (!hasContent && !hasToolCalls) {
           throw new Error('AI response is empty');
         }
-        
+
         return result;
       } catch (error) {
+        // Don't retry if request was cancelled
+        if ((error as Error).message === 'Request cancelled by user') {
+          throw error;
+        }
+
         const isLastAttempt = attempt === this.MAX_RETRIES;
-        
+
         if (isLastAttempt) {
           options.onError(error as Error);
           return {
@@ -91,14 +97,14 @@ class OpenAIService {
             assistantResponse: { content: null }
           };
         }
-        
-        // 等待后重试
+
+        // Wait before retrying
         await this.delay(this.RETRY_DELAY_MS * attempt);
         console.warn(`OpenAI API request failed (attempt ${attempt}/${this.MAX_RETRIES}):`, (error as Error).message);
       }
     }
 
-    // 这里不应该到达，但为了类型安全
+    // Should not reach here, but for type safety
     const finalError = new Error('All retry attempts failed');
     options.onError(finalError);
     return {
@@ -108,11 +114,11 @@ class OpenAIService {
   }
 
   private async performStreamChat(options: StreamChatOptions, apiConfig: any): Promise<StreamChatResult> {
-    // 打印请消息
+    // Print request messages (debug)
     // console.log('--- OpenAI Request Body [DEBUG] ---');
     // console.log(JSON.stringify(options.messages, null, 2));
     // console.log('------------------------------------');
-    // 打印系统提示词
+    // Print system prompt (debug)
     // console.log('--- System Prompt [DEBUG] ---');
     // console.log(options.messages[0].content);
     // console.log('------------------------------------');
@@ -123,6 +129,8 @@ class OpenAIService {
       stream: true,
       tools: options.tools,
       tool_choice: options.tools ? 'auto' : undefined,
+    }, {
+      signal: options.signal // Pass abort signal to OpenAI API
     });
 
     let accumulatedContent = '';
@@ -132,6 +140,11 @@ class OpenAIService {
     let reasoningContent = '';
 
     for await (const chunk of stream) {
+      // Check if request was aborted
+      if (options.signal?.aborted) {
+        throw new Error('Request cancelled by user');
+      }
+
       const delta = chunk.choices[0]?.delta as any;
 
       if (delta?.content) {
@@ -249,6 +262,54 @@ class OpenAIService {
     });
     return response.choices[0]?.message?.content || '';
   }
+
+  /**
+   * Test API connection
+   */
+  public async testConnection(): Promise<void> {
+    if (!this.openai) {
+      throw new Error('API key is not configured');
+    }
+
+    const apiConfig = StorageService.getApiConfig();
+
+    try {
+      // Make a simple test request with minimal tokens
+      const response = await this.openai.chat.completions.create({
+        model: apiConfig.model || 'gpt-4',
+        messages: [
+          { role: 'user', content: 'test' }
+        ],
+        max_tokens: 5,
+      });
+
+      // Check if we got a valid response
+      if (!response.choices || response.choices.length === 0) {
+        throw new Error('Invalid response from API');
+      }
+    } catch (error: any) {
+      // Provide more helpful error messages
+      if (error.status === 401) {
+        throw new Error('Invalid API key');
+      } else if (error.status === 404) {
+        throw new Error('Invalid API endpoint or model not found');
+      } else if (error.code === 'ENOTFOUND') {
+        throw new Error('Cannot reach API endpoint - check your base URL');
+      } else if (error.code === 'ECONNREFUSED') {
+        throw new Error('Connection refused - check if the API server is running');
+      } else {
+        throw new Error(error.message || 'Connection test failed');
+      }
+    }
+  }
+
+  /**
+   * Get singleton instance
+   */
+  public static getInstance(): OpenAIService {
+    return openAIService;
+  }
 }
 
-export const openAIService = new OpenAIService(); 
+export const openAIService = new OpenAIService();
+export { OpenAIService };

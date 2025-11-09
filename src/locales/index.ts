@@ -8,7 +8,7 @@ const availableMessages: Partial<Record<Language, Messages>> = {
 };
 
 export const getCurrentMessages = (lang: Language): Messages => {
-  // 如果请求的语言不可用，回退到英语
+  // If requested language is not available, fallback to English
   return availableMessages[lang] || availableMessages.en || en;
 };
 

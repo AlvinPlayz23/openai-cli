@@ -153,6 +153,7 @@ export interface MessageHandlerCallbacks {
     addMessage: (message: Message) => void;
     getRecentMessages: (count?: number) => Message[];
     getSystemDetector: () => SystemDetector;
+    getAbortSignal?: () => AbortSignal | null; // Optional abort signal getter
 }
 
 export class MessageHandler {
@@ -167,23 +168,23 @@ export class MessageHandler {
         this.streamRenderer = new StreamRenderer();
         this.reasoningStreamRenderer = new StreamRenderer();
 
-        // 监听语言变更事件
+        // Listen for language change events
         languageService.onLanguageChange((language) => {
             this.currentMessages = languageService.getMessages();
         });
         this.bindToolOutputToggle();
     }
-    
+
     private bindToolOutputToggle(): void {
         try {
             const stdin = process.stdin;
             if (!stdin.isTTY) return;
-            
+
             // Store the original mode
             const originalMode = stdin.isRaw;
-            
+
             stdin.setEncoding('utf8');
-            
+
             // Create a listener for key events
             const keyListener = (key: string) => {
                 // Ctrl+O (ASCII 15)
@@ -199,7 +200,7 @@ export class MessageHandler {
                     process.stdout.write(`\n${chalk.cyan('Reasoning visibility:')} ${chalk.bold(status)}\n\n`);
                 }
             };
-            
+
             // Remove any existing listeners to avoid duplicates
             stdin.removeAllListeners('data');
             stdin.on('data', keyListener);
@@ -212,7 +213,7 @@ export class MessageHandler {
     updateLanguage(messages: Messages): void {
         this.currentMessages = messages;
     }
-    
+
     /**
      * Display keyboard shortcuts help at the bottom
      */
@@ -221,11 +222,11 @@ export class MessageHandler {
             { key: 'Ctrl+O', desc: 'Toggle tool output' },
             { key: 'Ctrl+R', desc: 'Toggle reasoning' },
         ];
-        
+
         const shortcutText = shortcuts
             .map(s => `${chalk.cyan(s.key)}: ${chalk.dim(s.desc)}`)
             .join(chalk.dim(' • '));
-        
+
         console.log();
         console.log(chalk.dim('  Keyboard Shortcuts: ') + shortcutText);
         console.log();
@@ -480,9 +481,13 @@ If it has been completed, remember to call the 'update_todos' tool to update the
 
                 let aiResponseContent = '';
 
+                // Get abort signal if available
+                const abortSignal = this.callbacks.getAbortSignal?.() || undefined;
+
                 const result = await openAIService.streamChat({
                     messages: chatMessages,
                     tools: tools.length > 0 ? tools : undefined,
+                    signal: abortSignal,
                     onReasoningChunk: (chunk: string) => {
                         stopLoading();
                         if (isFirstReasoningChunk) {
@@ -491,7 +496,7 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                                 minute: '2-digit'
                             });
                             // Simple thinking indicator
-                            const thinkingPrefix = chalk.bgHex('#6B7280').white.bold(` Thinking `) + 
+                            const thinkingPrefix = chalk.bgHex('#6B7280').white.bold(` Thinking `) +
                                                  chalk.hex('#6B7280')(` ${timeStr} `);
                             process.stdout.write(`\n${thinkingPrefix}\n`);
                             if (REASONING_VISIBLE) {
@@ -546,7 +551,7 @@ If it has been completed, remember to call the 'update_todos' tool to update the
 
                         const finalContent = this.streamRenderer.finalize();
                         const finalReasoningContent = this.reasoningStreamRenderer.finalize();
-                        
+
                         // Close reasoning box if visible
                         if (finalReasoningContent && REASONING_VISIBLE) {
                             process.stdout.write('\n' + chalk.dim('└──────────────────────────────────────────────\n\n'));
@@ -555,7 +560,7 @@ If it has been completed, remember to call the 'update_todos' tool to update the
 
                         const combined = (finalContent || '') || aiResponseContent || fullResponse || '';
                         const rendered = renderMarkdown(combined);
-                        
+
                         process.stdout.write('\n' + chalk.green(messages.main.messages.aiLabel));
                         process.stdout.write('\n' + rendered + '\n');
 
@@ -575,7 +580,7 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                         if (finalReasoningContent && REASONING_VISIBLE) {
                             process.stdout.write('\n' + chalk.dim('└──────────────────────────────────────────────\n\n'));
                         }
-                        
+
                         // Simple error display
                         const errorMsg = `${messages.main.status.connectionError}: ${error.message}`;
                         process.stdout.write(chalk.red(errorMsg) + '\n\n');
@@ -586,11 +591,11 @@ If it has been completed, remember to call the 'update_todos' tool to update the
                 if (result.status === 'tool_calls') {
                     stopLoading();
                     const toolCalls = result.assistantResponse.tool_calls || [];
-                    
+
                     for (const toolCall of toolCalls) {
                         await this.handleToolCall(toolCall);
                     }
-                    
+
                     // Continue loop to let AI respond to tool results
                 } else {
                     continueConversation = false; // 'done' or error
@@ -630,10 +635,16 @@ If it has been completed, remember to call the 'update_todos' tool to update the
             const functionName = toolCall.function.name;
             const parameters = JSON.parse(toolCall.function.arguments || '{}');
 
-            // Simple tool call indicator
+            // Enhanced tool call indicator with icon
+            const toolIcon = this.getToolIcon(functionName);
             const summaryIntro = formatToolSummary(functionName, parameters, null);
-            const intro = `${chalk.cyan(summaryIntro.display)}${summaryIntro.targetShort ? chalk.gray(` (${summaryIntro.targetShort})`) : ''}`;
-            process.stdout.write(`\n${intro}\n`);
+            const intro = `${toolIcon} ${chalk.cyan.bold(summaryIntro.display)}${summaryIntro.targetShort ? chalk.gray(` → ${summaryIntro.targetShort}`) : ''}`;
+
+            // Show tool call box
+            process.stdout.write('\n');
+            process.stdout.write(chalk.gray('╭─ ') + chalk.cyan('Tool Execution') + '\n');
+            process.stdout.write(chalk.gray('│ ') + intro + '\n');
+            process.stdout.write(chalk.gray('╰─') + '\n');
 
             const needsConfirmation = StorageService.isFunctionConfirmationRequired(functionName);
 
@@ -728,15 +739,15 @@ If it has been completed, remember to call the 'update_todos' tool to update the
             const linesText = typeof summary.lines === 'number' ? chalk.dim(` • ${summary.lines} lines`) : '';
             const successIcon = chalk.green('✓');
             process.stdout.write(chalk.gray(`  ${successIcon} ${summary.display}${linesText}`) + '\n');
-            
+
             if (TOOL_OUTPUT_VISIBLE) {
                 const rendered = renderMarkdown(resultContent);
-                const boxed = boxen(rendered, { 
-                    padding: 1, 
-                    borderStyle: 'round', 
-                    borderColor: BORDER_COLORS.tool, 
+                const boxed = boxen(rendered, {
+                    padding: 1,
+                    borderStyle: 'round',
+                    borderColor: BORDER_COLORS.tool,
                     title: `${messages.main.messages.toolLabel} Output`,
-                    titleAlignment: 'left' 
+                    titleAlignment: 'left'
                 });
                 process.stdout.write(`\n${boxed}\n`);
             } else {
@@ -1009,5 +1020,33 @@ If it has been completed, remember to call the 'update_todos' tool to update the
         }
 
         return chatMessages;
+    }
+
+    /**
+     * Get icon for tool based on function name
+     */
+    private getToolIcon(functionName: string): string {
+        // File operations
+        if (functionName.includes('file') || functionName.includes('create') || functionName.includes('edit')) {
+            return chalk.blue('📝');
+        }
+        // Search operations
+        if (functionName.includes('search') || functionName.includes('find') || functionName.includes('grep')) {
+            return chalk.yellow('🔍');
+        }
+        // Execution operations
+        if (functionName.includes('execute') || functionName.includes('run') || functionName.includes('command')) {
+            return chalk.green('⚡');
+        }
+        // Git operations
+        if (functionName.includes('git')) {
+            return chalk.magenta('🔀');
+        }
+        // Web operations
+        if (functionName.includes('web') || functionName.includes('http') || functionName.includes('fetch')) {
+            return chalk.cyan('🌐');
+        }
+        // Default
+        return chalk.gray('🔧');
     }
 }

@@ -8,7 +8,11 @@ export * from './message-handler';
 export * from './native-input';
 export * from './responses';
 export * from './stream-renderer';
+export * from './interrupt-handler';
+export * from './boxed-input';
+export * from './status-bar';
+export * from './shortcuts-help';
 
-// 重新导出Message类型以保持兼容性
+// Re-export Message type for compatibility
 export type { Message } from '../../utils/token-calculator';
 

@@ -5,8 +5,8 @@ import { StorageService } from './storage';
 export type LanguageChangeCallback = (language: Language) => void;
 
 /**
- * 语言管理服务
- * 使用单例模式统一管理应用的语言状态
+ * Language Management Service
+ * Uses singleton pattern to manage application language state
  */
 export class LanguageService {
   private static instance: LanguageService;
@@ -14,13 +14,13 @@ export class LanguageService {
   private callbacks: Set<LanguageChangeCallback> = new Set();
 
   private constructor() {
-    // 尝试从存储中读取保存的语言设置，如果没有则使用默认语言
+    // Try to read saved language settings from storage, use default if not found
     const savedLanguage = StorageService.getSavedLanguage();
     this.currentLanguage = savedLanguage || 'en';
   }
 
   /**
-   * 获取语言服务单例实例
+   * Get language service singleton instance
    */
   static getInstance(): LanguageService {
     if (!LanguageService.instance) {
@@ -30,66 +30,66 @@ export class LanguageService {
   }
 
   /**
-   * 获取当前语言
+   * Get current language
    */
   getCurrentLanguage(): Language {
     return this.currentLanguage;
   }
 
   /**
-   * 设置当前语言
+   * Set current language
    */
   setLanguage(language: Language): void {
     if (language !== this.currentLanguage) {
       this.currentLanguage = language;
-      // 保存到存储中
+      // Save to storage
       StorageService.saveLanguage(language);
       this.notifyLanguageChange();
     }
   }
 
   /**
-   * 获取当前语言的消息
+   * Get messages for current language
    */
   getMessages() {
     return getCurrentMessages(this.currentLanguage);
   }
 
   /**
-   * 获取可用的语言列表
+   * Get available languages list
    */
   getAvailableLanguages(): Language[] {
     return getAvailableLanguages();
   }
 
   /**
-   * 获取语言配置信息
+   * Get language configuration info
    */
   getLanguageConfig(language: Language) {
     return LANGUAGES[language];
   }
 
   /**
-   * 获取所有语言配置
+   * Get all language configurations
    */
   getAllLanguageConfigs() {
     return LANGUAGES;
   }
 
   /**
-   * 注册语言变化回调
+   * Register language change callback
    */
   onLanguageChange(callback: LanguageChangeCallback): () => void {
     this.callbacks.add(callback);
 
-    // 返回取消注册的函数
+    // Return unregister function
     return () => {
       this.callbacks.delete(callback);
     };
   }
 
   /**
-   * 通知所有监听者语言已变化
+   * Notify all listeners that language has changed
    */
   private notifyLanguageChange(): void {
     this.callbacks.forEach(callback => {
@@ -102,7 +102,7 @@ export class LanguageService {
   }
 
   /**
-   * 创建语言选择菜单的选项
+   * Create language selection menu options
    */
   createLanguageMenuChoices() {
     return this.getAvailableLanguages().map(code => {
@@ -116,5 +116,5 @@ export class LanguageService {
   }
 }
 
-// 导出单例实例以便直接使用
-export const languageService = LanguageService.getInstance(); 
+// Export singleton instance for direct use
+export const languageService = LanguageService.getInstance();

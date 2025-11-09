@@ -204,45 +204,72 @@ export class InputHandler {
   }
 
   /**
- * 渲染建议列表
+ * 渲染建议列表 - Enhanced with better styling inspired by cn-cli-components
  */
   renderSuggestions(suggestions: InputSuggestion[], selectedIndex: number): string[] {
-    return suggestions.map((suggestion, index) => {
-      const isSelected = index === selectedIndex;
-      const prefix = isSelected ? chalk.cyan('● ') : chalk.gray('○ ');
+    if (suggestions.length === 0) {
+      return [chalk.gray('  No matching commands found')];
+    }
 
-      let displayText: string;
+    // Find the longest command name for alignment
+    const maxCommandLength = Math.max(
+      ...suggestions.map(s => s.display.length),
+      10 // minimum width
+    );
+
+    const lines: string[] = [];
+    const terminalWidth = process.stdout.columns || 80;
+    const maxLineWidth = Math.max(40, terminalWidth - 4);
+
+    suggestions.forEach((suggestion, index) => {
+      const isSelected = index === selectedIndex;
+
       if (suggestion.type === 'command') {
-        displayText = isSelected
-          ? chalk.cyan.bold(suggestion.display) + ' - ' + chalk.white.bold(suggestion.description)
-          : chalk.gray(suggestion.display) + ' - ' + chalk.gray(suggestion.description);
+        // Command suggestion with aligned description
+        const commandName = suggestion.display.padEnd(maxCommandLength);
+        const description = suggestion.description || '';
+
+        let line: string;
+        if (isSelected) {
+          // Selected: blue highlight with bold text
+          line = '  ' + chalk.bold.white(commandName) + '    ' + chalk.bold.blue(description);
+        } else {
+          // Unselected: normal text
+          line = '  ' + chalk.white(commandName) + '    ' + chalk.gray(description);
+        }
+
+        // Truncate if too long
+        const displayWidth = this.getDisplayWidthWithAnsi(line);
+        if (displayWidth > maxLineWidth) {
+          line = this.truncateWithColor(line, maxLineWidth);
+        }
+        lines.push(line);
       } else {
-        // 文件类型：使用更清晰的格式显示
+        // File suggestion
         const display = suggestion.display;
         const description = suggestion.description;
 
+        let line: string;
         if (isSelected) {
-          displayText = chalk.yellow.bold(display) + chalk.white(' - ') + chalk.white.dim(description);
+          line = '  ' + chalk.yellow.bold(display) + chalk.white(' - ') + chalk.white.dim(description);
         } else {
-          displayText = chalk.gray(display) + chalk.gray(' - ') + chalk.gray.dim(description);
+          line = '  ' + chalk.gray(display) + chalk.gray(' - ') + chalk.gray.dim(description);
         }
-      }
 
-      // 确保每行都不会超过终端宽度，避免自动换行导致的显示问题
-      const terminalWidth = process.stdout.columns || 80;
-      const maxLineWidth = Math.max(40, terminalWidth - 4); // 至少保留40个字符，留出一些边距
-      const fullLine = prefix + displayText;
-      
-      // 使用 StringUtils 计算实际显示宽度（考虑ANSI颜色代码）
-      const displayWidth = this.getDisplayWidthWithAnsi(fullLine);
-      
-      if (displayWidth > maxLineWidth) {
-        // 截断过长的行，但保留颜色格式
-        return this.truncateWithColor(fullLine, maxLineWidth);
+        // Truncate if too long
+        const displayWidth = this.getDisplayWidthWithAnsi(line);
+        if (displayWidth > maxLineWidth) {
+          line = this.truncateWithColor(line, maxLineWidth);
+        }
+        lines.push(line);
       }
-      
-      return fullLine;
     });
+
+    // Add navigation hint at the bottom
+    lines.push('');
+    lines.push(chalk.dim.gray('  ↑/↓ to navigate, Enter to select, Tab to complete, Esc to cancel'));
+
+    return lines;
   }
 
   /**

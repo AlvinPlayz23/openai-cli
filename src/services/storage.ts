@@ -39,11 +39,11 @@ export interface McpConfig {
 
 
 /**
- * 配置存储服务
- * 处理用户偏好设置的持久化
+ * Configuration Storage Service
+ * Handles persistence of user preference settings
  */
 export class StorageService {
-  private static readonly CONFIG_DIR = path.join(os.homedir(), '.openai-cli');
+  private static readonly CONFIG_DIR = path.join(os.homedir(), '.catwalk');
   private static readonly CONFIG_FILE = path.join(StorageService.CONFIG_DIR, 'config.json');
   private static configChangeListeners: ConfigChangeListener[] = [];
 

@@ -5,7 +5,7 @@ import { StorageService } from '../../services/storage';
 import { SystemDetector } from '../../services/system-detector';
 import { Messages } from '../../types/language';
 import { LoadingController, StringUtils } from '../../utils';
-import { ChatState, CommandManager, FileSearchManager, HelpManager, InitHandler, InputHandler, InputState, Message, MessageHandler, MessageHandlerCallbacks, ResponseManager } from '../components';
+import { ChatState, CommandManager, FileSearchManager, HelpManager, InitHandler, InputHandler, InputState, Message, MessageHandler, MessageHandlerCallbacks, ResponseManager, InterruptHandler, createInterruptHandler, StatusBar } from '../components';
 import { ConfigPage } from './config';
 
 export class MainPage {
@@ -17,8 +17,10 @@ export class MainPage {
   private loadingController: LoadingController | null = null;
   private isDestroyed = false;
   private configChangeListener: ((config: any) => void) | null = null;
+  private abortController: AbortController | null = null; // For cancelling AI requests
+  private interruptHandler: InterruptHandler | null = null; // For ESC interrupt during streaming
 
-  // 组件管理器
+  // Component managers
   private commandManager: CommandManager;
   private helpManager: HelpManager;
   private responseManager: ResponseManager;
@@ -43,7 +45,7 @@ export class MainPage {
     this.initHandler = new InitHandler(this.currentMessages);
     this.systemDetector = new SystemDetector();
 
-    // 创建 MessageHandler 回调
+    // Create MessageHandler callbacks
     const messageHandlerCallbacks: MessageHandlerCallbacks = {
       onStateChange: (state: Partial<ChatState>) => {
         this.setChatState(state);
@@ -71,6 +73,9 @@ export class MainPage {
       },
       getSystemDetector: () => {
         return this.systemDetector;
+      },
+      getAbortSignal: () => {
+        return this.abortController?.signal || null;
       }
     };
 
@@ -91,12 +96,12 @@ export class MainPage {
     StorageService.onConfigChange(this.configChangeListener);
   }
 
-  // 销毁方法，清理所有资源
+  // Destroy method, clean up all resources
   destroy(): void {
     if (this.isDestroyed) return;
     this.isDestroyed = true;
 
-    // 移除配置变更监听器
+    // Remove config change listener
     if (this.configChangeListener) {
       StorageService.removeConfigChangeListener(this.configChangeListener);
       this.configChangeListener = null;
@@ -130,11 +135,11 @@ export class MainPage {
       try {
         process.stdin.setRawMode(false);
       } catch (error) {
-        // 忽略错误
+        // Ignore errors
       }
     }
 
-    // 移除所有可能的事件监听器
+    // Remove all possible event listeners
     process.stdin.removeAllListeners('data');
     process.stdin.removeAllListeners('error');
     process.stdin.removeAllListeners('end');
@@ -142,7 +147,7 @@ export class MainPage {
     try {
       process.stdin.pause();
     } catch (error) {
-      // 忽略错误
+      // Ignore errors
     }
   }
 
@@ -156,7 +161,7 @@ export class MainPage {
     this.messageHandler.updateLanguage(this.currentMessages);
   }
 
-  // 公开API：注入AI回复
+  // Public API: Inject AI reply
   injectAIReply(content: string): void {
     // 停止loading动画
     if (this.loadingController) {
@@ -239,42 +244,50 @@ export class MainPage {
   }
 
   /**
-   * 显示欢迎框
+   * Show welcome box with enhanced design
    */
   private showWelcomeBox(): void {
-    const main = this.currentMessages.main;
-
-    // 获取当前配置信息
+    // Get current configuration info
     const currentDir = process.cwd();
     const apiConfig = StorageService.getApiConfig();
 
-    // ASCII Art for OpenAI CLI
-    const asciiArt = `
-   ___                   _    ___   ___ _    ___ 
-  / _ \\ _ __   ___ _ __ / \\  |_ _| / __| |  |_ _|
- | | | | '_ \\ / _ \\ '_ \\ / _ \\  | | | |  | |   | |
- | |_| | |_) |  __/ | | / ___ \\ | | | |__| |___ | |
-  \\___/| .__/ \\___|_| |_/_/   \\_|___| \\____|_____|___|
-       |_|                                            
-    `.trim();
+    // Simple banner for Catwalk CLI
+    const asciiArt = chalk.cyan.bold('Catwalk AI Coding Assistant');
 
-    // 简化配置信息显示
+    // Configuration status with icons
+    const hasConfig = apiConfig.apiKey && apiConfig.baseUrl;
+    const statusIcon = hasConfig ? chalk.green('✓') : chalk.red('✗');
+    const statusText = hasConfig ? chalk.green('Ready') : chalk.yellow('Not configured');
+
     const configLines = [
-      `${chalk.gray('Directory:')} ${chalk.white(currentDir)}`,
-      `${chalk.gray('API URL:')} ${chalk.white(apiConfig.baseUrl || 'Not configured')}`,
-      `${chalk.gray('API Key:')} ${chalk.white(apiConfig.apiKey ? StringUtils.maskApiKey(apiConfig.apiKey) : 'Not configured')}`
+      chalk.gray('━'.repeat(50)),
+      '',
+      `${chalk.blue('📁')} ${chalk.gray('Directory:')} ${chalk.white(currentDir)}`,
+      `${chalk.blue('🌐')} ${chalk.gray('API URL:')} ${chalk.white(apiConfig.baseUrl || chalk.dim('Not set'))}`,
+      `${chalk.blue('🔑')} ${chalk.gray('API Key:')} ${chalk.white(apiConfig.apiKey ? StringUtils.maskApiKey(apiConfig.apiKey) : chalk.dim('Not set'))}`,
+      `${chalk.blue('🤖')} ${chalk.gray('Model:')} ${chalk.white(apiConfig.model || chalk.dim('Not set'))}`,
+      '',
+      `${statusIcon} ${chalk.gray('Status:')} ${statusText}`,
+      '',
+      chalk.gray('━'.repeat(50)),
+      '',
+      chalk.dim('💡 Quick Tips:'),
+      chalk.dim('  • Type /help for available commands'),
+      chalk.dim('  • Press ESC twice to interrupt AI responses'),
+      chalk.dim('  • Use /config to change settings'),
+      chalk.dim('  • Press Ctrl+C to clear input, Ctrl+D to exit')
     ];
 
-    // 欢迎方框 - 更紧凑的设计
+    // Welcome box - enhanced design
     const welcomeBox = boxen(
-      chalk.cyan(asciiArt) + '\n\n' +
+      asciiArt + '\n\n' +
       configLines.join('\n'),
       {
-        padding: { top: 1, bottom: 1, left: 2, right: 2 },
-        margin: { top: 1, bottom: 0, left: 2, right: 2 },
+        padding: { top: 1, bottom: 1, left: 3, right: 3 },
+        margin: { top: 1, bottom: 1, left: 2, right: 2 },
         borderStyle: 'round',
-        borderColor: 'cyan',
-        title: chalk.cyan.bold('AI Coding Assistant'),
+        borderColor: hasConfig ? 'cyan' : 'yellow',
+        title: chalk.cyan.bold('Catwalk'),
         titleAlignment: 'center'
       }
     );
@@ -315,6 +328,15 @@ export class MainPage {
 
     // 显示欢迎框
     this.showWelcomeBox();
+
+    // Show status bar
+    const apiConfig = StorageService.getApiConfig();
+    StatusBar.show({
+      model: apiConfig.model || 'Not set',
+      mode: 'normal',
+      remoteUrl: StatusBar.getCurrentRepoUrl(),
+      showExitHint: false
+    });
 
     // Skip system detection display
     // await this.performSystemDetection();
@@ -395,16 +417,35 @@ export class MainPage {
           }
         }
 
-        // 如果 CommandManager 返回未处理，则有可能是普通消息或包含文件引用的消息
+        // If CommandManager returns unhandled, it might be a normal message or message with file references
         if (!commandResult.handled) {
-          // 检查是否是普通消息
+          // Check if it's a normal message
           if (!userInput.startsWith('/')) {
-            // 添加用户消息并直接显示
+            // Add user message and display directly
             this.messageHandler.addUserMessage(userInput);
 
-            // 处理AI请求
-            await this.messageHandler.processAIRequest();
-            continue; // 继续下一次循环
+            // Start AI request with abort controller
+            this.startAIRequest();
+
+            // Process AI request
+            try {
+              await this.messageHandler.processAIRequest();
+            } catch (error: any) {
+              if (error.message === 'Request cancelled by user') {
+                // Request was cancelled, continue to next input
+                continue;
+              }
+              throw error; // Re-throw other errors
+            } finally {
+              // Clean up abort controller and interrupt handler
+              this.abortController = null;
+
+              if (this.interruptHandler) {
+                this.interruptHandler.stop();
+                this.interruptHandler = null;
+              }
+            }
+            continue; // Continue to next loop
           }
 
           // 处理未被 commandManager.handleInput 捕获的其他命令
@@ -429,7 +470,7 @@ export class MainPage {
   }
 
   private async getUserInput(): Promise<string> {
-    // 检查是否已被销毁
+    // Check if already destroyed
     if (this.isDestroyed) {
       return '/exit';
     }
@@ -439,70 +480,77 @@ export class MainPage {
       let cursorPosition = 0;
       let currentState: InputState | null = null;
       let isDestroyed = false;
-      let lastDisplayLines = 1;
       let lastSuggestionLines = 0;
+      let escPressCount = 0;
+      let escTimer: NodeJS.Timeout | null = null;
+      let boxLines = 0; // Track how many lines the box uses
 
-      // Simple prompt without box
-      const promptText = chalk.cyan('> ');
-      process.stdout.write('\n' + promptText);
+      // Box drawing characters
+      const box = {
+        topLeft: '╭',
+        topRight: '╮',
+        bottomLeft: '╰',
+        bottomRight: '╯',
+        horizontal: '─',
+        vertical: '│'
+      };
 
-      // 单行输入框渲染
+      // Render input line in a box
       const redrawInputLine = () => {
         if (isDestroyed) return;
 
         const terminalWidth = process.stdout.columns || 80;
-        
-        // 首先回到第一行的开头
-        process.stdout.write('\r');
-        if (lastDisplayLines > 1) {
-          // 向上移动到起始行
-          process.stdout.write(`\x1B[${lastDisplayLines - 1}A`);
-        }
-        
-        // 清除所有相关行
-        for (let i = 0; i < lastDisplayLines; i++) {
-          process.stdout.write('\x1B[2K'); // 清除当前行
-          if (i < lastDisplayLines - 1) {
-            process.stdout.write('\x1B[1B'); // 向下移动到下一行
-          }
-        }
-        
-        // 回到第一行开头
-        if (lastDisplayLines > 1) {
-          process.stdout.write(`\x1B[${lastDisplayLines - 1}A`);
-        }
-        process.stdout.write('\r');
-        
-        // 计算新内容的显示信息 - only the prompt and input, not the box
-        const displayText = promptText + currentInput;
-        const displayWidth = StringUtils.getDisplayWidth(displayText);
-        const newDisplayLines = Math.ceil(displayWidth / terminalWidth) || 1;
-        
-        // 输出新内容
-        process.stdout.write(displayText);
-        
-        // 更新行数记录
-        lastDisplayLines = newDisplayLines;
+        // Use 95% of terminal width, with min 40 and max 150
+        const boxWidth = Math.min(Math.max(Math.floor(terminalWidth * 0.95), 40), 150);
+        const contentWidth = boxWidth - 4; // Account for borders and padding
 
-        // 计算并设置光标位置
-        const promptLength = StringUtils.getDisplayWidth(promptText);
-        const inputToCursor = currentInput.substring(0, cursorPosition);
-        const cursorOffset = StringUtils.getDisplayWidth(inputToCursor);
-        const totalCursorPos = promptLength + cursorOffset;
-        
-        const targetLine = Math.floor(totalCursorPos / terminalWidth);
-        const targetCol = totalCursorPos % terminalWidth;
-        
-        // 从当前位置（内容末尾）移动到目标位置
-        const currentEndLine = newDisplayLines - 1;
-        if (targetLine < currentEndLine) {
-          // 需要向上移动
-          process.stdout.write(`\x1B[${currentEndLine - targetLine}A`);
+        // Clear previous box
+        if (boxLines > 0) {
+          // Move from current cursor position (content line) to top border line
+          process.stdout.write(`\x1B[${boxLines - 2}A`);
+          // Clear all box lines
+          for (let i = 0; i < boxLines; i++) {
+            process.stdout.write('\r\x1B[2K');
+            if (i < boxLines - 1) process.stdout.write('\x1B[1B');
+          }
+          // Move back to top border line to start re-rendering
+          process.stdout.write(`\x1B[${boxLines - 1}A\r`);
         }
+
+        // Build new box
+        const lines: string[] = [];
+
+        // Top border
+        lines.push(chalk.cyan(box.topLeft + box.horizontal.repeat(boxWidth - 2) + box.topRight));
+
+        // Content line
+        const promptText = chalk.cyan('> ');
+        const displayText = currentInput || chalk.dim('Type your message...');
+        const content = promptText + displayText;
         
-        // 设置到正确的列位置
-        process.stdout.write(`\x1B[${targetCol + 1}G`);
+        // Calculate actual display width (strip ANSI codes)
+        const stripAnsi = (str: string) => str.replace(/\x1B\[[0-9;]*m/g, '');
+        const actualWidth = StringUtils.getDisplayWidth(stripAnsi(content));
+        const paddedContent = content + ' '.repeat(Math.max(0, contentWidth - actualWidth));
+        lines.push(chalk.cyan(box.vertical) + ' ' + paddedContent + ' ' + chalk.cyan(box.vertical));
+
+        // Bottom border
+        lines.push(chalk.cyan(box.bottomLeft + box.horizontal.repeat(boxWidth - 2) + box.bottomRight));
+
+        // Render
+        process.stdout.write(lines.join('\n'));
+        boxLines = lines.length;
+
+        // Position cursor in the input area
+        const promptWidth = 2; // "> "
+        const cursorCol = 3 + promptWidth + cursorPosition; // 3 = "│ "
+        process.stdout.write(`\x1B[${boxLines - 2}A`); // Move to content line
+        process.stdout.write(`\x1B[${cursorCol}G`); // Move to cursor position
       };
+
+      // Show initial box
+      process.stdout.write('\n');
+      redrawInputLine();
 
       // 显示建议列表
       const showSuggestions = (state: InputState) => {
@@ -529,12 +577,8 @@ export class MainPage {
 
         // 更新建议行数追踪
         lastSuggestionLines = suggestionLines + 1; // +1 是因为开头的 \n
-
-        // 向上移动回输入行
+        // 向上移动回输入行 (don't redraw, already drawn by hideSuggestions)
         process.stdout.write(`\x1B[${lastSuggestionLines}A`);
-        
-        // 重绘输入行确保显示正确
-        redrawInputLine();
       };
 
       // 隐藏建议列表
@@ -552,7 +596,7 @@ export class MainPage {
         // 重置建议行数
         lastSuggestionLines = 0;
         
-        // 重绘输入行
+        // 重绘输入行(always needed after clearing)
         redrawInputLine();
       };
 
@@ -583,10 +627,21 @@ export class MainPage {
         
         currentState.selectedIndex = newIndex;
         
-        // 先隐藏当前建议，再显示新的
+        // Clear old suggestions and show new ones with updated selection
         if (lastSuggestionLines > 0) {
-          hideSuggestions();
+          // Move down to suggestions area
+          process.stdout.write(`\x1B[${lastSuggestionLines}B`);
+          
+          // Clear each suggestion line
+          for (let i = 0; i < lastSuggestionLines; i++) {
+            process.stdout.write('\x1B[1A\x1B[2K');
+          }
+          
+          // Reset counter
+          lastSuggestionLines = 0;
         }
+        
+        // Show updated suggestions (will set lastSuggestionLines)
         showSuggestions(currentState);
       };
 
@@ -597,6 +652,17 @@ export class MainPage {
 
         if (currentState?.showingSuggestions) {
           hideSuggestions();
+        }
+        
+        // Clear the box
+        if (boxLines > 0) {
+          process.stdout.write(`\x1B[${boxLines - 1}A`);
+          for (let i = 0; i < boxLines; i++) {
+            process.stdout.write('\r\x1B[2K');
+            if (i < boxLines - 1) process.stdout.write('\x1B[1B');
+          }
+          process.stdout.write(`\x1B[${boxLines - 1}A\r`);
+          boxLines = 0;
         }
 
         // 移除所有事件监听器
@@ -656,8 +722,10 @@ export class MainPage {
                 if (currentState.showingSuggestions) {
                   hideSuggestions();
                 }
-                process.stdout.write('\x1B[2K\x1B[0G');
-                process.stdout.write(chalk.cyan(this.currentMessages.main.prompt) + newInput + '\n');
+                // Clear box and move to new line
+                if (boxLines > 0) {
+                  process.stdout.write(`\x1B[${boxLines}B\n`);
+                }
                 cleanup();
                 resolve(newInput);
                 return;
@@ -675,8 +743,11 @@ export class MainPage {
             } else if (currentInput.trim()) {
               // 发送内容
               const finalInput = currentInput.trim();
+              // Clear box and move to new line
+              if (boxLines > 0) {
+                process.stdout.write(`\x1B[${boxLines}B\n`);
+              }
               cleanup();
-              process.stdout.write('\n');
               resolve(finalInput);
               return;
             } else {
@@ -744,12 +815,59 @@ export class MainPage {
             }
           }
 
-          // ESC 键处理
+          // ESC key handling - double press to clear input
           if (keyCode === 27 && key.length === 1) {
+            // First, hide suggestions if showing
             if (currentState?.showingSuggestions) {
               hideSuggestions();
               currentState.showingSuggestions = false;
               currentState.suggestions = [];
+              return;
+            }
+
+            // Handle double ESC to clear input
+            if (escPressCount === 0) {
+              if (currentInput === '') {
+                return; // Nothing to clear
+              }
+              escPressCount = 1;
+
+              // Show "Press ESC again to clear" prompt below the box
+              // Move down past the box (3 lines) and show message
+              process.stdout.write(`\x1B[${boxLines}B`);
+              process.stdout.write('\n' + chalk.dim('Press ESC again to clear.'));
+              // Move back up
+              process.stdout.write(`\x1B[${boxLines + 1}A`);
+              
+              // Reset after 500ms
+              if (escTimer) {
+                clearTimeout(escTimer);
+              }
+              escTimer = setTimeout(() => {
+                escPressCount = 0;
+                escTimer = null;
+                // Clear the prompt message below box
+                process.stdout.write(`\x1B[${boxLines}B`);
+                process.stdout.write('\n\x1B[2K');
+                process.stdout.write(`\x1B[${boxLines + 1}A`);
+              }, 500);
+            } else {
+              // Second ESC press - clear input
+              if (escTimer) {
+                clearTimeout(escTimer);
+                escTimer = null;
+              }
+              escPressCount = 0;
+
+              // Clear the prompt message below box
+              process.stdout.write(`\x1B[${boxLines}B`);
+              process.stdout.write('\n\x1B[2K');
+              process.stdout.write(`\x1B[${boxLines + 1}A`);
+
+              // Clear input
+              currentInput = '';
+              cursorPosition = 0;
+              redrawInputLine();
             }
             return;
           }
@@ -815,6 +933,9 @@ export class MainPage {
         process.stdin.resume();
         process.stdin.setEncoding('utf8');
 
+        // 确保没有遗留的输入监听器，避免重复处理
+        process.stdin.removeAllListeners('data');
+
         // 添加事件监听器
         process.stdin.on('data', onKeyPress);
         process.stdin.on('error', onError);
@@ -831,9 +952,60 @@ export class MainPage {
   }
 
   /**
-   * 处理 /init 命令
+   * Start a new AI request with abort controller and interrupt handler
+   */
+  private startAIRequest(): void {
+    this.abortController = new AbortController();
+
+    // Create interrupt handler for ESC key
+    this.interruptHandler = createInterruptHandler({
+      onInterrupt: () => {
+        this.cancelCurrentRequest();
+      },
+      onEscapePrompt: (show: boolean) => {
+        // Could show/hide prompt in UI if needed
+      }
+    });
+
+    // Start listening for ESC key
+    this.interruptHandler.start();
+  }
+
+  /**
+   * Cancel the current AI request
+   */
+  public cancelCurrentRequest(): void {
+    // Stop interrupt handler
+    if (this.interruptHandler) {
+      this.interruptHandler.stop();
+      this.interruptHandler = null;
+    }
+
+    if (this.abortController) {
+      this.abortController.abort();
+      this.abortController = null;
+
+      // Stop loading animation
+      if (this.loadingController) {
+        this.loadingController.stop();
+        this.loadingController = null;
+      }
+
+      // Show cancellation message
+      process.stdout.write('\n' + chalk.yellow('✗ Request cancelled by user') + '\n');
+
+      // Reset chat state
+      this.setChatState({
+        canSendMessage: true,
+        isProcessing: false
+      });
+    }
+  }
+
+  /**
+   * Handle /init command
    */
   private async handleInitCommand(): Promise<void> {
     await this.initHandler.execute();
   }
-} 
+}

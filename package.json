@@ -1,10 +1,10 @@
 {
-  "name": "openai-cli-unofficial",
+  "name": "catwalk-cli",
   "version": "0.2.4",
-  "description": "A powerful OpenAI CLI Coding Agent built with TypeScript",
+  "description": "Catwalk CLI - A powerful AI Coding Agent built with TypeScript",
   "main": "dist/index.js",
   "bin": {
-    "openai-cli": "dist/index.js"
+    "catwalk": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -18,7 +18,7 @@
     "prepare": "npm run build"
   },
   "keywords": [
-    "openai",
+    "catwalk",
     "cli",
     "coding",
     "agent",
@@ -29,13 +29,13 @@
   ],
   "author": "",
   "license": "MIT",
-  "homepage": "https://github.com/MayDay-wpf/openai-cli#readme",
+  "homepage": "https://github.com/AlvinPlayz23/catwalk-cli#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/MayDay-wpf/openai-cli.git"
+    "url": "git+https://github.com/AlvinPlayz23/catwalk-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/MayDay-wpf/openai-cli/issues"
+    "url": "https://github.com/AlvinPlayz23/catwalk-cli/issues"
   },
   "files": [
     "dist/**/*",

@@ -1,5 +1,6 @@
 // Screens
 export { WelcomeScreen } from './screens/welcome';
+export { SimpleWelcomeScreen } from './screens/welcome-simple';
 
 // Pages
 export { ConfigPage } from './pages/config';

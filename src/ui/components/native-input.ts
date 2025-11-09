@@ -130,10 +130,17 @@ export class NativeInput {
                         // 普通字符输入
                         if (keyCode >= 32 && keyCode <= 126) {
                             inputBuffer += key;
+                            // 使用与退格相同的方式重绘整行，避免终端回显或重复写入导致的重复字符
+                            process.stdout.write('\u001B[2K\u001B[0G');
+                            process.stdout.write(chalk.white(options.message));
+                            if (options.default) {
+                                process.stdout.write(chalk.gray(` (${options.default})`));
+                            }
+                            process.stdout.write(' ');
                             if (options.mask) {
-                                process.stdout.write('*');
+                                process.stdout.write('*'.repeat(inputBuffer.length));
                             } else {
-                                process.stdout.write(key);
+                                process.stdout.write(inputBuffer);
                             }
                         }
                         break;

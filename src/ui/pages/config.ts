@@ -16,12 +16,10 @@ export class ConfigPage {
   }
 
   private async showHeader(): Promise<void> {
-    const messages = languageService.getMessages();
-
-    // Clean modern header with box
+    // Modern header with gradient effect
     const header = boxen(
-      chalk.cyan.bold('⚙ CONFIGURATION') + '\n' +
-      chalk.gray(messages.config.subtitle || 'Manage your OpenAI CLI settings'),
+      chalk.cyan.bold('⚙  CATWALK CONFIGURATION') + '\n' +
+      chalk.gray('Manage your AI assistant settings'),
       {
         padding: { top: 0, bottom: 0, left: 2, right: 2 },
         margin: { top: 1, bottom: 1, left: 2, right: 2 },
@@ -55,76 +53,53 @@ export class ConfigPage {
     );
     console.log(statusBox);
 
+    // Only show essential configuration options in TUI
+    // Other settings remain in config file but are not shown in menu
     const choices: MenuChoice[] = [
       {
-        name: chalk.blue('📡 ') + messages.config.menuOptions.baseUrl,
+        name: chalk.blue('🌐 ') + 'Set API Base URL',
         value: 'baseUrl',
-        description: messages.config.menuDescription.baseUrl
+        description: 'Configure the OpenAI-compatible API endpoint'
       },
       {
-        name: chalk.yellow('🔑 ') + messages.config.menuOptions.apiKey,
+        name: chalk.yellow('🔑 ') + 'Set API Key',
         value: 'apiKey',
-        description: messages.config.menuDescription.apiKey
+        description: 'Configure your API authentication key'
       },
       {
-        name: chalk.cyan('🔐 Context7 API Key'),
+        name: chalk.cyan('🔐 ') + 'Set Context7 API Key',
         value: 'context7ApiKey',
-        description: 'API key for Context7 documentation service (optional, for higher rate limits)'
+        description: 'Optional: API key for Context7 documentation service'
       },
       {
-        name: chalk.green('🤖 ') + messages.config.menuOptions.model,
+        name: chalk.green('🤖 ') + 'Set Default Model',
         value: 'model',
-        description: messages.config.menuDescription.model
+        description: 'Choose the AI model to use (e.g., gpt-4, claude-3-opus)'
       },
       {
-        name: chalk.magenta('💾 ') + messages.config.menuOptions.contextTokens,
-        value: 'contextTokens',
-        description: messages.config.menuDescription.contextTokens
-      },
-      {
-        name: chalk.cyan('⚡ ') + messages.config.menuOptions.maxConcurrency,
-        value: 'maxConcurrency',
-        description: messages.config.menuDescription.maxConcurrency
-      },
-      {
-        name: chalk.blue('👤 ') + messages.config.menuOptions.role,
+        name: chalk.magenta('👤 ') + 'Set System Role',
         value: 'role',
-        description: messages.config.menuDescription.role
+        description: 'Define the AI assistant\'s behavior and personality'
       },
       {
-        name: chalk.green('🔌 ') + messages.config.menuOptions.mcpConfig,
+        name: chalk.blue('🔌 ') + 'Edit MCP Config',
         value: 'mcpConfig',
-        description: messages.config.menuDescription.mcpConfig
+        description: 'Configure Model Context Protocol servers'
       },
       {
-        name: chalk.yellow('✓ ') + messages.config.menuOptions.mcpFunctionConfirmation,
-        value: 'mcpFunctionConfirmation',
-        description: messages.config.menuDescription.mcpFunctionConfirmation
-      },
-      {
-        name: chalk.cyan('🔧 ') + messages.config.menuOptions.maxToolCalls,
-        value: 'maxToolCalls',
-        description: messages.config.menuDescription.maxToolCalls
-      },
-      {
-        name: chalk.red('⚠ ') + messages.config.menuOptions.terminalSensitiveWords,
-        value: 'terminalSensitiveWords',
-        description: messages.config.menuDescription.terminalSensitiveWords
-      },
-      {
-        name: chalk.gray('👁 ') + messages.config.menuOptions.viewConfig,
+        name: chalk.gray('👁  ') + 'View Current Config',
         value: 'viewConfig',
-        description: messages.config.menuDescription.viewConfig
+        description: 'Display all current configuration settings'
       },
       {
-        name: chalk.red('🔄 ') + messages.config.menuOptions.resetConfig,
-        value: 'resetConfig',
-        description: messages.config.menuDescription.resetConfig
+        name: chalk.green('🔗 ') + 'Test Connection',
+        value: 'testConnection',
+        description: 'Verify API connection and credentials'
       },
       {
-        name: chalk.gray('← ') + messages.config.menuOptions.back,
+        name: chalk.gray('← ') + 'Back to Main Menu',
         value: 'back',
-        description: messages.config.menuDescription.back
+        description: 'Return to the main chat interface'
       }
     ];
 
@@ -137,7 +112,6 @@ export class ConfigPage {
   }
 
   private async handleConfigAction(action: string): Promise<void> {
-    const messages = languageService.getMessages();
     console.log();
 
     switch (action) {
@@ -157,14 +131,6 @@ export class ConfigPage {
         await this.editModel();
         break;
 
-      case 'contextTokens':
-        await this.editContextTokens();
-        break;
-
-      case 'maxConcurrency':
-        await this.editMaxConcurrency();
-        break;
-
       case 'role':
         await this.editRole();
         break;
@@ -173,41 +139,29 @@ export class ConfigPage {
         await this.editMcpConfig();
         break;
 
-      case 'mcpFunctionConfirmation':
-        await this.editMcpFunctionConfirmation();
-        break;
-
-      case 'maxToolCalls':
-        await this.editMaxToolCalls();
-        break;
-
-
-
-      case 'terminalSensitiveWords':
-        await this.editTerminalSensitiveWords();
-        break;
-
       case 'viewConfig':
         await this.viewCurrentConfig();
-        // 查看配置后暂停让用户查看，使用自定义的等待输入方法避免终端状态冲突
+        // Wait for user to review config
         console.log();
         await this.waitForEnter();
         break;
 
-      case 'resetConfig':
-        await this.resetConfig();
+      case 'testConnection':
+        await this.testConnection();
+        console.log();
+        await this.waitForEnter();
         break;
 
       case 'back':
-        return; // 直接返回到欢迎页
+        return; // Return to main menu
 
       default:
-        console.log('  ' + chalk.red(messages.welcome.actions.unknownAction));
+        console.log('  ' + chalk.red('Unknown action'));
     }
 
-    // 除了返回操作，其他操作完成后自动返回配置菜单
+    // Return to config menu after action (except back)
     if (action !== 'back') {
-      await this.show(); // 递归显示配置页面
+      await this.show();
     }
   }
 
@@ -1047,6 +1001,88 @@ export class ConfigPage {
       this.resetTerminalState();
       console.log();
       return;
+    }
+  }
+
+  /**
+   * Test API connection
+   */
+  private async testConnection(): Promise<void> {
+    const currentConfig = StorageService.getApiConfig();
+
+    console.log();
+    const testBox = boxen(
+      chalk.green.bold('🔗 Testing API Connection\n\n') +
+      chalk.gray('Endpoint: ') + chalk.cyan(currentConfig.baseUrl || 'Not set') + '\n' +
+      chalk.gray('Model: ') + chalk.cyan(currentConfig.model || 'Not set'),
+      {
+        padding: { top: 0, bottom: 0, left: 2, right: 2 },
+        borderStyle: 'round',
+        borderColor: 'green'
+      }
+    );
+    console.log(testBox);
+    console.log();
+
+    // Check if required config is set
+    if (!currentConfig.baseUrl || !currentConfig.apiKey) {
+      const errorBox = boxen(
+        chalk.red.bold('✗ Configuration Incomplete\n\n') +
+        chalk.gray('Please set both API Base URL and API Key before testing connection.'),
+        {
+          padding: { top: 0, bottom: 0, left: 2, right: 2 },
+          borderStyle: 'round',
+          borderColor: 'red'
+        }
+      );
+      console.log(errorBox);
+      return;
+    }
+
+    // Show loading animation
+    const loadingController = AnimationUtils.showLoadingAnimation({
+      text: 'Testing connection...',
+      interval: 150
+    });
+
+    try {
+      // Import OpenAI service
+      const { OpenAIService } = await import('../../services/openai');
+      const openAIService = OpenAIService.getInstance();
+
+      // Make a simple test request
+      await openAIService.testConnection();
+
+      // Stop loading
+      loadingController.stop();
+
+      // Show success
+      const successBox = boxen(
+        chalk.green.bold('✓ Connection Successful!\n\n') +
+        chalk.gray('Your API credentials are valid and the connection is working.'),
+        {
+          padding: { top: 0, bottom: 0, left: 2, right: 2 },
+          borderStyle: 'round',
+          borderColor: 'green'
+        }
+      );
+      console.log(successBox);
+    } catch (error: any) {
+      // Stop loading
+      loadingController.stop();
+
+      // Show error
+      const errorBox = boxen(
+        chalk.red.bold('✗ Connection Failed\n\n') +
+        chalk.gray('Error: ') + chalk.red(error.message || 'Unknown error') + '\n\n' +
+        chalk.dim('Please check your API Base URL and API Key.'),
+        {
+          padding: { top: 0, bottom: 0, left: 2, right: 2 },
+          borderStyle: 'round',
+          borderColor: 'red'
+        }
+      );
+      console.log(errorBox);
     }
   }
 

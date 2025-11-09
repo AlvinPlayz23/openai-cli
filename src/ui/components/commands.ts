@@ -94,6 +94,11 @@ export class CommandManager {
                 value: '/checkpoint',
                 name: mainCommands.checkpoint.name,
                 description: mainCommands.checkpoint.description
+            },
+            {
+                value: '/shortcuts',
+                name: 'Shortcuts',
+                description: 'Show keyboard shortcuts and commands'
             }
         ];
     }
@@ -245,6 +250,12 @@ export class CommandManager {
 
             case '/history': {
                 await this.showHistory(currentMessages);
+                return { handled: true, shouldContinue: true };
+            }
+
+            case '/shortcuts': {
+                const { ShortcutsHelp } = await import('./shortcuts-help');
+                ShortcutsHelp.show();
                 return { handled: true, shouldContinue: true };
             }
 

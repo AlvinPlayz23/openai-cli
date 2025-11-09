@@ -22,18 +22,76 @@ export class AnimationUtils {
   };
 
   /**
-   * 显示可控制的加载动画（异步关闭）
+   * Braille characters organized by dot density (from cn-cli-components)
+   * Creates beautiful, smooth animations using Unicode braille patterns
+   */
+  private static readonly BRAILLE_BY_DENSITY: { [key: number]: string[] } = {
+    0: ['⠀'], // No dots
+    1: ['⠁', '⠂', '⠄', '⠈', '⠐', '⠠', '⡀', '⢀'], // 1 dot
+    2: ['⠃', '⠅', '⠉', '⠑', '⠡', '⠊', '⠒', '⠔'], // 2 dots
+    3: ['⠇', '⠋', '⠍', '⠕', '⠣', '⠱', '⠪', '⠜'], // 3 dots
+    4: ['⠏', '⠗', '⠛', '⠝', '⠧', '⠯', '⠳', '⠵'], // 4 dots
+    5: ['⠟', '⠫', '⠭', '⠷', '⠽', '⠾', '⠻', '⠺'], // 5 dots
+    6: ['⠿', '⡷', '⡾', '⡻', '⡯', '⡧', '⢿', '⣷'], // 6 dots
+    7: ['⣿', '⣾', '⣽', '⣻', '⣯', '⣧', '⣏', '⡿'], // 7 dots
+    8: ['⣿'], // All dots (8)
+  };
+
+  /**
+   * Generate a frame with specific dot density using random braille characters
+   */
+  private static generateDensityFrame(dotCount: number, length: number = 3): string {
+    const density = Math.min(8, Math.max(0, dotCount));
+    const chars = this.BRAILLE_BY_DENSITY[density];
+    return Array.from(
+      { length },
+      () => chars[Math.floor(Math.random() * chars.length)]
+    ).join('');
+  }
+
+  /**
+   * Generate static fade animation frames (inspired by cn-cli-components)
+   * Creates smooth breathing effect using braille characters
+   */
+  private static generateStaticFadeFrames(): string[] {
+    // Timing curve for easing: [hold_frames_per_density_level]
+    // Creates smooth ease-in-ease-out effect
+    const timingCurve = [3, 3, 2, 1, 1, 0, 1, 2, 3];
+
+    const frames: string[] = [];
+
+    // Going down (8 -> 0)
+    for (let density = 8; density >= 0; density--) {
+      const frameCount = timingCurve[8 - density];
+      for (let i = 0; i < frameCount; i++) {
+        frames.push(this.generateDensityFrame(density));
+      }
+    }
+
+    // Going up (1 -> 8) - skip 0 to avoid double-holding at the bottom
+    for (let density = 1; density <= 8; density++) {
+      const frameCount = timingCurve[8 - density];
+      for (let i = 0; i < frameCount; i++) {
+        frames.push(this.generateDensityFrame(density));
+      }
+    }
+
+    return frames;
+  }
+
+  /**
+   * 显示可控制的加载动画（异步关闭）- Enhanced with smooth static fade
    */
   static showLoadingAnimation(options: AnimationOptions): LoadingController {
-    const { text, interval = 100 } = options;
+    const { text, interval = 150 } = options; // 150ms for smooth animation
 
     // 预计算彩色文字
     const loadingText = this.gradients.primary(text);
     const staticPart = '  ';  // 缩进
     const textPart = ` ${loadingText}`;  // 空格 + 彩色文字
 
-    // Simple dot spinner
-    const frames = ['·', '•', '●', '●', '•', '·'];
+    // Generate smooth static fade frames
+    const frames = this.generateStaticFadeFrames();
     let frameIndex = 0;
     let animationInterval: NodeJS.Timeout | null = null;
     let isRunning = true;
@@ -42,14 +100,14 @@ export class AnimationUtils {
     process.stdout.write('\x1B[?25l');
 
     // 初始显示
-    process.stdout.write(staticPart + chalk.blue.bold(frames[frameIndex]) + textPart);
+    process.stdout.write(staticPart + chalk.green(frames[frameIndex]) + textPart);
 
     // 启动动画
     animationInterval = setInterval(() => {
       if (!isRunning) return;
       frameIndex = (frameIndex + 1) % frames.length;
-      // 只替换旋转符号部分，保持文字不变
-      process.stdout.write('\r' + staticPart + chalk.blue.bold(frames[frameIndex]) + textPart);
+      // 只替换动画符号部分，保持文字不变
+      process.stdout.write('\r' + staticPart + chalk.green(frames[frameIndex]) + textPart);
     }, interval);
 
     // 返回控制器
@@ -66,7 +124,7 @@ export class AnimationUtils {
         }
 
         // 计算需要清除的长度
-        const totalLength = staticPart.length + 1 + textPart.length; // 1 是旋转符号的长度
+        const totalLength = staticPart.length + 1 + textPart.length; // 1 是动画符号的长度
 
         // 清除整行内容
         process.stdout.write('\r' + ' '.repeat(totalLength) + '\r');
